@@ -5,10 +5,13 @@ import { exec } from 'child_process'
 import { fileURLToPath } from 'url'
 import puppeteer from 'puppeteer'
 import { writeMetadata } from 'png-metadata-writer'
+import dotenv from 'dotenv'
+
+dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const STICKER_PRINTER = process.env.STICKER_PRINTER || 'Brother QL-700'
-const IRFANVIEW_PATH = 'C:\\Program Files\\IrfanView\\i_view64.exe'
+const IRFANVIEW_PATH = process.env.IRFANVIEW_PATH || 'C:\\Program Files\\IrfanView\\i_view64.exe'
 
 // 62mm x 29mm @ 300 DPI
 const STICKER_WIDTH = 732
@@ -75,8 +78,12 @@ export async function printSticker(drink = {}) {
     })
     fsSync.writeFileSync(imagePath, bufferWithDpi)
 
-    // 🛑 Tisk přes IrfanView je zakomentovaný:
-    /*
+    // Kontrola existence IrfanView
+    if (!fsSync.existsSync(IRFANVIEW_PATH)) {
+        throw new Error(`❌ IrfanView nebyl nalezen na cestě: ${IRFANVIEW_PATH}`)
+    }
+
+    // Tisk přes IrfanView
     const command = `"${IRFANVIEW_PATH}" "${imagePath}" /print="${STICKER_PRINTER}" /silent`
     exec(command, (err, stdout, stderr) => {
         if (err) {
@@ -87,7 +94,6 @@ export async function printSticker(drink = {}) {
             if (stderr) console.error(stderr)
         }
     })
-    */
 
     console.log(`🖼️ Sticker vygenerován v temp složce: ${imagePath}`)
 }

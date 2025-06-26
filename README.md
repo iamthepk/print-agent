@@ -1,200 +1,193 @@
-# 🖨️ Print Agent pro POS systém
+# 🖨️ Print Agent
 
-**Print Agent** je lokální Node.js aplikace pro tisk účtenek a štítků nápojů z POS systému na specializované tiskárny. Agent běží na pozadí a poskytuje REST API pro vzdálený tisk z webových aplikací nebo pokladních systémů.
+Lokální tiskový agent pro tisk účtenek (Epson TM-T20III) a štítků (Brother QL-700) pro Bubble Tea provoz.
 
-## 📋 Co to dělá?
+## 📋 Obsah
+- [Instalace](#-instalace)
+- [Konfigurace](#-konfigurace)
+- [API Endpointy](#-api-endpointy)
+- [Příklady použití](#-příklady-použití)
+- [Řešení problémů](#-řešení-problémů)
 
-- **Tisk účtenek** na běžné tiskárny (Epson TM-T20II/III) přes PDF
-- **Tisk štítků nápojů** na štítkové tiskárny (Brother QL-700) přes PNG obrázky
-- **REST API** pro vzdálené volání tisku z jiných aplikací
-- **Automatické generování** PDF účtenek a PNG štítků ze strukturovaných dat
+## 🚀 Instalace
 
-## 🎯 Použití
+1. **Nainstalujte Node.js**
+   - Minimální verze: 20.x
+   - [Stáhněte zde](https://nodejs.org/)
 
-Typické využití v restauraci/kavárně:
-1. **POS systém** (web/mobilní app) odešle objednávku na Print Agent
-2. **Print Agent** vygeneruje a vytiskne účtenku pro zákazníka
-3. **Print Agent** vytiskne štítek nápoje pro baristu
-4. **Zákazník** dostane účtenku, barista vidí štítek s detaily nápoje
+2. **Nainstalujte SumatraPDF**
+   - Potřebné pro tisk účtenek
+   - [Stáhněte zde](https://www.sumatrapdfreader.org/download-free-pdf-viewer)
+   - Výchozí instalační cesta: `C:\\Users\\team\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`
 
-## 🛠️ Technické požadavky
-
-- **Node.js 16+**
-- **Windows** (kvůli SumatraPDF a IrfanView)
-- **Nainstalované ovladače tiskáren**
-- **[SumatraPDF](https://www.sumatrapdfreader.org/free-pdf-reader)** (pro tisk účtenek)
-- **[IrfanView](https://www.irfanview.com/)** (pro tisk štítků, volitelné)
-
-## 📦 Instalace
-
-1. **Naklonuj projekt**
-   ```bash
-   git clone <repository-url>
-   cd print-agent
-   ```
-
-2. **Nainstaluj závislosti**
+3. **Nainstalujte závislosti**
    ```bash
    npm install
    ```
 
-3. **Vytvoř konfigurační soubor `.env`**
+4. **Vytvořte .env soubor**
    ```env
-   RECEIPT_PRINTER=Epson TM-T20III Receipt
+   RECEIPT_PRINTER=EPSON TM-T20III Receipt
    STICKER_PRINTER=Brother QL-700
-   PORT=8000
+   SUMATRA_PATH=C:\\Users\\team\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe
    ```
 
-4. **Spusť aplikaci**
+5. **Spusťte server**
    ```bash
    npm start
    ```
 
 ## ⚙️ Konfigurace
 
-### Nastavení tiskáren
+### Tiskárny
+- **Účtenky**: Epson TM-T20III
+  - Musí být nastavena jako výchozí tiskárna Windows
+  - Název v Windows musí odpovídat `RECEIPT_PRINTER` v .env
 
-V souboru `.env` nastav názvy tiskáren přesně tak, jak se zobrazují ve Windows:
+- **Štítky**: Brother QL-700
+  - Musí být nainstalovaný ovladač
+  - Název v Windows musí odpovídat `STICKER_PRINTER` v .env
 
-```env
-# Název účtenkové tiskárny (musí být přesný)
-RECEIPT_PRINTER=Epson TM-T20III Receipt
+### Porty
+- Výchozí port: 8000
+- Lze změnit v .env: `PORT=3000`
 
-# Název štítkové tiskárny (musí být přesný)
-STICKER_PRINTER=Brother QL-700
+## 🌐 API Endpointy
 
-# Port pro REST API
-PORT=8000
-```
+### 1. Tisk účtenky
+**POST** `/print-receipt`
 
-**Tip:** Názvy tiskáren zjistíš v „Zařízení a tiskárny" ve Windows.
-
-### Cesty k aplikacím
-
-Aplikace očekává tyto cesty (obvykle výchozí instalace):
-- **SumatraPDF:** `C:\Users\team\AppData\Local\SumatraPDF\SumatraPDF.exe`
-- **IrfanView:** `C:\Program Files\IrfanView\i_view64.exe`
-
-## 🚀 Používání
-
-### REST API Endpointy
-
-#### 📄 Tisk účtenky
-```http
-POST http://localhost:8000/print-receipt
-Content-Type: application/json
-
+```json
 {
-  "receiptNo": "12345",
-  "createdAt": "2024-06-01 12:34",
+  "receiptNo": "123",
+  "createdAt": "2024-03-18 12:34",
   "items": [
-    { "qty": 2, "name": "Bubble Tea", "price": 89 },
-    { "qty": 1, "name": "Tapioka", "price": 20 }
+    {
+      "qty": 1,
+      "name": "Brown Sugar Milk Tea",
+      "price": 89
+    }
   ],
-  "totalCZK": 198,
-  "totalEUR": 8.00,
-  "paymentMethod": "Hotově",
-  "exchangeRate": "24.7"
+  "totalCZK": 89,
+  "totalEUR": 3.50,
+  "exchangeRate": "25.4 CZK/EUR",
+  "paymentMethod": "Hotovost"
 }
 ```
 
-#### 🏷️ Tisk štítku nápoje
-```http
-POST http://localhost:8000/print-sticker
-Content-Type: application/json
+### 2. Tisk štítku
+**POST** `/print-sticker`
 
+```json
 {
   "pcs": "1",
-  "name": "Lootea's Brown Sugar 700 ml",
-  "order": "6989",
+  "name": "Brown Sugar 700ml",
+  "order": "123",
   "round": "1",
   "sweetness": "less sweet",
   "ice": "less ice",
   "message": "Smile, You are beautiful!",
-  "toppings": ["Boba", "Lychee Jelly"]
+  "toppings": ["Blueberry", "Peach"]
 }
 ```
 
-#### 🩺 Health check
-```http
-GET http://localhost:8000/healthcheck
+### 3. Healthcheck
+**GET** `/healthcheck`
+
+Vrací: `{"status": "ok"}`
+
+### 4. Otevření pokladní zásuvky
+**POST** `/open-drawer`
+
+Otevře pokladní zásuvku pomocí ESC/POS příkazu poslaného přes Windows API na tiskárnu.
+
+Používá C# program s Windows API pro přímý RAW tisk na tiskárnu:
+- ESC/POS příkaz: `0x1B 0x70 0x30 0x37 0x79`
+- Automatické vytvoření a smazání dočasných souborů
+- Kontrola úspěšnosti operace
+
+Odpověď:
+```json
+{
+  "status": "ok",
+  "message": "Pokladní zásuvka otevřena"
+}
 ```
 
-### PowerShell příklady
+## 📝 Příklady použití
 
-**Tisk účtenky:**
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8000/print-receipt" -Method Post -Body (@{
-    receiptNo = "12345"
-    createdAt = "2024-06-01 12:34"
-    items = @(
-        @{ qty = 2; name = "Bubble Tea"; price = 89 }
-    )
-    totalCZK = 178
-    totalEUR = 7.2
-    paymentMethod = "Hotově"
-    exchangeRate = "24.7"
-} | ConvertTo-Json) -ContentType "application/json"
+### Tisk účtenky
+```javascript
+fetch('http://localhost:8000/print-receipt', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    receiptNo: "123",
+    createdAt: "2024-03-18 12:34",
+    items: [{
+      qty: 1,
+      name: "Brown Sugar Milk Tea",
+      price: 89
+    }],
+    totalCZK: 89,
+    totalEUR: 3.50,
+    exchangeRate: "25.4 CZK/EUR",
+    paymentMethod: "Hotovost"
+  })
+})
 ```
 
-**Tisk štítku:**
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8000/print-sticker" -Method Post
+### Tisk štítku
+```javascript
+fetch('http://localhost:8000/print-sticker', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    pcs: "1",
+    name: "Brown Sugar 700ml",
+    order: "123",
+    round: "1",
+    sweetness: "less sweet",
+    ice: "less ice",
+    message: "Smile, You are beautiful!",
+    toppings: ["Blueberry", "Peach"]
+  })
+})
 ```
 
-## 📁 Struktura projektu
+## ❗ Řešení problémů
 
-```
-print-agent/
-├── 📄 server.js              # Hlavní HTTP server
-├── 🖨️ print/
-│   ├── printReceipt.js       # Tisk účtenek (PDF → tiskárna)
-│   └── printSticker.js       # Tisk štítků (HTML → PNG → tiskárna)
-├── 📝 templates/
-│   ├── receiptTemplate.js    # Generování PDF účtenky
-│   └── stickerTemplate.html  # HTML šablona štítku
-├── 📦 temp/                  # Dočasné soubory (PDF, PNG)
-├── 🎨 assets/                # Obrázky, loga
-├── ⚙️ .env                   # Konfigurace
-└── 📖 README.md              # Tento soubor
-```
+### Účtenky se netisknou
+1. Zkontrolujte, zda je SumatraPDF nainstalován na správné cestě
+2. Zkontrolujte název tiskárny v Windows
+3. Zkontrolujte, zda je tiskárna online a má papír
 
-## 🔧 Řešení problémů
+### Štítky se netisknou
+1. Zkontrolujte, zda je Brother QL-700 zapnutá a připojená
+2. Zkontrolujte název tiskárny v Windows
+3. Zkontrolujte, zda je nainstalovaný správný ovladač
+4. Podívejte se do složky `temp/` na vygenerované PNG soubory
 
-### Tiskárna nenalezena
-- Zkontroluj název tiskárny v `.env` – musí být přesný
-- Ověř, že je tiskárna zapnutá a připojená
-- Zkontroluj ovladače tiskárny
+### Server nejde spustit
+1. Zkontrolujte, zda běží Node.js: `node --version`
+2. Zkontrolujte, zda jsou nainstalovány všechny závislosti: `npm install`
+3. Zkontrolujte, zda není port 8000 obsazený
+4. Zkontrolujte .env soubor
 
-### PDF se netiskne
-- Zkontroluj, že je SumatraPDF nainstalováno na správné cestě
-- Ověř, že tiskárna podporuje PDF tisk
-- Zkus vytisknout PDF ručně z SumatraPDF
+## 📦 Technické detaily
 
-### Štítek se nevygeneruje
-- Zkontroluj, že je Chrome/Chromium nainstalováno (potřebuje Puppeteer)
-- Ověř, že složka `temp/` existuje a je zapisovatelná
+### Štítky
+- Rozměr: 62mm x 29mm
+- Rozlišení: 300 DPI
+- Formát: PNG s DPI metadaty
+- Rozměr v pixelech: 732x342
 
-### Mezera nahoře u účtenky
-- Zkontroluj nastavení okrajů v ovladači tiskárny
-- Nastav „Bez okrajů" nebo minimální okraje v nastavení tisku
-
-## 🏢 Podnikové nasazení
-
-Pro produkční použití doporučujeme:
-- Spouštět jako Windows Service
-- Nastavit automatický restart při pádu
-- Logování do souborů
-- Záložní tiskárny při výpadku
-
-## 📞 Podpora
-
-Při problémech zkontroluj:
-1. Konzoli aplikace (chybové hlášky)
-2. Nastavení tiskáren ve Windows
-3. Že jsou nainstalované všechny požadované aplikace
-
----
-
-**Vytvořeno pro POS systémy restaurací a kaváren** ☕  
-*Print Agent umožňuje bezproblémový tisk účtenek a štítků z webových aplikací.*
+### Účtenky
+- Šířka: 80mm
+- Formát: PDF
+- Font: Helvetica
+- Velikost QR kódu: 20x20mm

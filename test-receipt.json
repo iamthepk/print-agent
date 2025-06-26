@@ -1,0 +1,15 @@
+{
+  "receiptNo": "TEST123",
+  "createdAt": "2024-03-18 13:45",
+  "items": [
+    {
+      "qty": 1,
+      "name": "Test Item",
+      "price": 100
+    }
+  ],
+  "totalCZK": 100,
+  "totalEUR": 4,
+  "exchangeRate": "25 CZK/EUR",
+  "paymentMethod": "Test"
+}
