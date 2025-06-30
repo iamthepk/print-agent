@@ -93,6 +93,13 @@ export async function printSticker(drink = {}) {
             if (stdout) console.log(stdout)
             if (stderr) console.error(stderr)
         }
+        // Po tisku smažeme dočasný PNG soubor
+        try {
+            fsSync.unlinkSync(imagePath)
+            console.log('🗑️ Dočasný PNG soubor smazán:', imagePath)
+        } catch (e) {
+            console.warn('⚠️ Nepodařilo se smazat dočasný PNG soubor:', e.message)
+        }
     })
 
     console.log(`🖼️ Sticker vygenerován v temp složce: ${imagePath}`)

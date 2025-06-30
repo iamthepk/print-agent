@@ -1,6 +1,93 @@
-# 🖨️ Print Agent
+# 🖨️ LOOTEA Print Agent
 
-Lokální tiskový agent pro tisk účtenek (Epson TM-T20III) a štítků (Brother QL-700) pro Bubble Tea provoz.
+**LOOTEA Print Agent** je jednoduchý lokální server (Node.js aplikace), který umožňuje automatizovaný tisk účtenek (Epson TM-T20III) a štítků (Brother QL-700) v provozovnách Bubble Tea. Slouží jako most mezi webovou aplikací a lokální tiskárnou – přijímá HTTP požadavky a zajišťuje tisk na konkrétní zařízení připojené k počítači.
+
+---
+
+## 🛠️ Co aplikace dělá
+- Přijímá požadavky na tisk účtenky nebo štítku přes HTTP API (POST endpointy)
+- Vygeneruje účtenku jako PDF a odešle ji na tiskárnu přes SumatraPDF
+- Vygeneruje štítek jako PNG, přidá DPI metadata a odešle jej na tiskárnu přes IrfanView
+- Umožňuje otevřít pokladní zásuvku pomocí ESC/POS příkazu (C# kód spuštěný přes Windows API)
+- Po startu serveru automaticky vyčistí složku `temp/` (odstraní všechny dočasné soubory)
+- Hlavní stránka webu zobrazuje pouze nápis **LOOTEA PRINT AGENT**
+
+---
+
+## ⚙️ Jak to funguje
+1. **Tisk účtenky**
+   - API přijme JSON s daty účtenky
+   - Vygeneruje PDF pomocí PDFKit
+   - PDF se vytiskne přes SumatraPDF na zvolenou tiskárnu
+   - Po tisku se PDF smaže
+
+2. **Tisk štítku**
+   - API přijme JSON s daty štítku
+   - Vygeneruje HTML, převede jej na PNG pomocí Puppeteer
+   - Přidá DPI metadata (pro správný tisk)
+   - PNG se vytiskne přes IrfanView na zvolenou tiskárnu
+   - Po tisku se PNG smaže
+
+3. **Otevření pokladní zásuvky**
+   - API endpoint spustí C# kód, který odešle ESC/POS příkaz na tiskárnu
+   - Zásuvka se otevře
+
+4. **Úklid temp složky**
+   - Při každém spuštění agenta se složka `temp/` kompletně vyčistí
+
+---
+
+## 🚀 Jak zprovoznit
+
+1. **Nainstalujte Node.js** (verze 20.x nebo novější)
+   - [Stáhněte zde](https://nodejs.org/)
+
+2. **Nainstalujte SumatraPDF** (pro tisk účtenek)
+   - [Stáhněte zde](https://www.sumatrapdfreader.org/download-free-pdf-viewer)
+   - Výchozí cesta: `C:\Users\team\AppData\Local\SumatraPDF\SumatraPDF.exe`
+
+3. **Nainstalujte IrfanView** (pro tisk štítků)
+   - [Stáhněte zde](https://www.irfanview.com/)
+   - Výchozí cesta: `C:\Program Files\IrfanView\i_view64.exe`
+
+4. **Nainstalujte závislosti**
+   ```bash
+   npm install
+   ```
+
+5. **Vytvořte .env soubor** v kořenové složce projektu:
+   ```env
+   RECEIPT_PRINTER=EPSON TM-T20III Receipt
+   STICKER_PRINTER=Brother QL-700
+   SUMATRA_PATH=C:\Users\team\AppData\Local\SumatraPDF\SumatraPDF.exe
+   IRFANVIEW_PATH=C:\Program Files\IrfanView\i_view64.exe
+   PORT=8000
+   ```
+
+6. **Spusťte server**
+   ```bash
+   npm start
+   ```
+
+7. **(Volitelné) Přidejte agenta do Po spuštění Windows**
+   - Vytvořte .bat soubor s obsahem:
+     ```bat
+     @echo off
+     cd /d C:\Users\team\Documents\GitHub\print-agent
+     call npm start
+     ```
+   - Vložte jej do složky Po spuštění (`shell:startup`)
+
+---
+
+## 🌐 API Endpointy
+
+- `POST /print-receipt` – tisk účtenky (JSON viz níže)
+- `POST /print-sticker` – tisk štítku (JSON viz níže)
+- `POST /open-drawer` – otevření pokladní zásuvky
+- `GET /healthcheck` – kontrola běhu serveru
+
+---
 
 ## 📋 Obsah
 - [Instalace](#-instalace)
