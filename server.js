@@ -3,7 +3,6 @@ import express from 'express'
 import cors from 'cors'
 import { printReceipt } from './print/printReceipt.js'
 import { printSticker } from './print/printSticker.js'
-import { ThermalPrinter, PrinterTypes, CharacterSet } from 'node-thermal-printer'
 
 dotenv.config()
 
