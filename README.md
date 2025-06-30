@@ -69,14 +69,22 @@
    npm start
    ```
 
-7. **(Volitelné) Přidejte agenta do Po spuštění Windows**
-   - Vytvořte .bat soubor s obsahem:
-     ```bat
-     @echo off
-     cd /d C:\Users\team\Documents\GitHub\print-agent
-     call npm start
-     ```
-   - Vložte jej do složky Po spuštění (`shell:startup`)
+7. **(Doporučeno) Spouštění agenta jako služba pomocí NSSM**
+   - Pro automatické spouštění při startu PC a běh na pozadí bez oken použijte [NSSM (Non-Sucking Service Manager)](https://nssm.cc/):
+     1. Stáhněte a rozbalte NSSM.
+     2. Otevřete příkazový řádek jako správce a spusťte:
+        ```cmd
+        C:\nssm\win64\nssm.exe install LooteaPrintAgent
+        ```
+     3. Nastavte:
+        - **Path:** cesta k `node.exe` (např. `C:\Program Files\nodejs\node.exe`)
+        - **Startup directory:** složka s print agentem (např. `C:\Users\team\Documents\GitHub\print-agent`)
+        - **Arguments:** `server.js`
+     4. Službu spusťte:
+        ```cmd
+        nssm start LooteaPrintAgent
+        ```
+   - Výhody: běží na pozadí, automaticky po startu PC, bez nutnosti přihlášení uživatele, bez oken.
 
 ---
 
