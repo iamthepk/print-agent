@@ -119,10 +119,10 @@ app.post('/print-receipt', async (req, res) => {
 })
 
 app.post('/print-sticker', async (req, res) => {
-    console.log('📦 Přijatá data pro štítek:', req.body) // ← DEBUG
+    console.log('📦 Přijatá data pro štítek:', req.body)
     try {
         await printSticker(req.body)
-        res.json({ status: 'ok' })
+        res.json({ status: 'ok', message: 'Štítek odeslán k tisku' })
     } catch (e) {
         console.error('❌ Chyba při tisku štítku:', e.message)
         res.status(500).json({ status: 'error', message: e.message })

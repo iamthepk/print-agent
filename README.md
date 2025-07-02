@@ -1,288 +1,308 @@
 # 🖨️ LOOTEA Print Agent
 
-**LOOTEA Print Agent** je jednoduchý lokální server (Node.js aplikace), který umožňuje automatizovaný tisk účtenek (Epson TM-T20III) a štítků (Brother QL-700) v provozovnách Bubble Tea. Slouží jako most mezi webovou aplikací a lokální tiskárnou – přijímá HTTP požadavky a zajišťuje tisk na konkrétní zařízení připojené k počítači.
+**LOOTEA Print Agent** je lokální tiskový server pro Bubble Tea provozovny. Poskytuje HTTP API pro automatizovaný tisk účtenek (Epson TM-T20III) a štítků (Brother QL-700). Slouží jako most mezi webovou aplikací/POS systémem a lokálními tiskárnami.
 
 ---
 
-## 🛠️ Co aplikace dělá
-- Přijímá požadavky na tisk účtenky nebo štítku přes HTTP API (POST endpointy)
-- Vygeneruje účtenku jako PDF a odešle ji na tiskárnu přes SumatraPDF
-- Vygeneruje štítek jako PNG, přidá DPI metadata a odešle jej na tiskárnu přes IrfanView
-- Umožňuje otevřít pokladní zásuvku pomocí ESC/POS příkazu (C# kód spuštěný přes Windows API)
-- Po startu serveru automaticky vyčistí složku `temp/` (odstraní všechny dočasné soubory)
-- Hlavní stránka webu zobrazuje pouze nápis **LOOTEA PRINT AGENT**
+## ✨ Klíčové funkce
+
+- 🧾 **Tisk účtenek** - moderní design s Bebas Neue fontem
+- 🏷️ **Tisk štítků** - customizovatelné štítky pro nápoje
+- 💰 **Otevření pokladní zásuvky** - ESC/POS příkazy
+- 🌐 **HTTP API** - jednoduché REST endpointy
+- 🗂️ **Automatický úklid** - temp soubory se mazají automaticky
+- 🎨 **Moderní design** - profesionální vzhled účtenek
 
 ---
 
-## ⚙️ Jak to funguje
-1. **Tisk účtenky**
-   - API přijme JSON s daty účtenky
-   - Vygeneruje PDF pomocí PDFKit
-   - PDF se vytiskne přes SumatraPDF na zvolenou tiskárnu
-   - Po tisku se PDF smaže
+## 🛠️ Jak to funguje
 
-2. **Tisk štítku**
-   - API přijme JSON s daty štítku
-   - Vygeneruje HTML, převede jej na PNG pomocí Puppeteer
-   - Přidá DPI metadata (pro správný tisk)
-   - PNG se vytiskne přes IrfanView na zvolenou tiskárnu
-   - Po tisku se PNG smaže
+### 1. Tisk účtenky
+- API přijme JSON s daty objednávky
+- Vygeneruje PDF účtenku pomocí PDFKit s **Bebas Neue** fontem
+- Účtenka obsahuje: logo, company info, položky, daně, platbu, footer
+- PDF se vytiskne přes SumatraPDF na tiskárnu
+- Dočasný PDF se automaticky smaže
 
-3. **Otevření pokladní zásuvky**
-   - API endpoint spustí C# kód, který odešle ESC/POS příkaz na tiskárnu
-   - Zásuvka se otevře
+### 2. Tisk štítku  
+- API přijme JSON s daty štítku
+- Vygeneruje HTML template, převede na PNG pomocí Puppeteer
+- Přidá správné DPI metadata pro kvalitní tisk
+- PNG se vytiskne přes IrfanView na štítkovou tiskárnu
+- Dočasný PNG se automaticky smaže
 
-4. **Úklid temp složky**
-   - Při každém spuštění agenta se složka `temp/` kompletně vyčistí
-
----
-
-## 🚀 Jak zprovoznit
-
-1. **Nainstalujte Node.js** (verze 20.x nebo novější)
-   - [Stáhněte zde](https://nodejs.org/)
-
-2. **Nainstalujte SumatraPDF** (pro tisk účtenek)
-   - [Stáhněte zde](https://www.sumatrapdfreader.org/download-free-pdf-viewer)
-   - Výchozí cesta: `C:\Users\team\AppData\Local\SumatraPDF\SumatraPDF.exe`
-
-3. **Nainstalujte IrfanView** (pro tisk štítků)
-   - [Stáhněte zde](https://www.irfanview.com/)
-   - Výchozí cesta: `C:\Program Files\IrfanView\i_view64.exe`
-
-4. **Nainstalujte závislosti**
-   ```bash
-   npm install
-   ```
-
-5. **Vytvořte .env soubor** v kořenové složce projektu:
-   ```env
-   RECEIPT_PRINTER=EPSON TM-T20III Receipt
-   STICKER_PRINTER=Brother QL-700
-   SUMATRA_PATH=C:\Users\team\AppData\Local\SumatraPDF\SumatraPDF.exe
-   IRFANVIEW_PATH=C:\Program Files\IrfanView\i_view64.exe
-   PORT=8000
-   ```
-
-6. **Spusťte server**
-   ```bash
-   npm start
-   ```
-
-7. **(Doporučeno) Spouštění agenta jako služba pomocí NSSM**
-   - Pro automatické spouštění při startu PC a běh na pozadí bez oken použijte [NSSM (Non-Sucking Service Manager)](https://nssm.cc/):
-     1. Stáhněte a rozbalte NSSM.
-     2. Otevřete příkazový řádek jako správce a spusťte:
-        ```cmd
-        C:\nssm\win64\nssm.exe install LooteaPrintAgent
-        ```
-     3. Nastavte:
-        - **Path:** cesta k `node.exe` (např. `C:\Program Files\nodejs\node.exe`)
-        - **Startup directory:** složka s print agentem (např. `C:\Users\team\Documents\GitHub\print-agent`)
-        - **Arguments:** `server.js`
-     4. Službu spusťte:
-        ```cmd
-        nssm start LooteaPrintAgent
-        ```
-   - Výhody: běží na pozadí, automaticky po startu PC, bez nutnosti přihlášení uživatele, bez oken.
+### 3. Otevření zásuvky
+- Odešle ESC/POS příkaz přímo na tiskárnu
+- Používá Windows API pro RAW tisk
 
 ---
-
-## 🌐 API Endpointy
-
-- `POST /print-receipt` – tisk účtenky (JSON viz níže)
-- `POST /print-sticker` – tisk štítku (JSON viz níže)
-- `POST /open-drawer` – otevření pokladní zásuvky
-- `GET /healthcheck` – kontrola běhu serveru
-
----
-
-## 📋 Obsah
-- [Instalace](#-instalace)
-- [Konfigurace](#-konfigurace)
-- [API Endpointy](#-api-endpointy)
-- [Příklady použití](#-příklady-použití)
-- [Řešení problémů](#-řešení-problémů)
 
 ## 🚀 Instalace
 
-1. **Nainstalujte Node.js**
-   - Minimální verze: 20.x
-   - [Stáhněte zde](https://nodejs.org/)
+### 1. Předpoklady
+- **Node.js 20.x+** - [Stáhnout](https://nodejs.org/)
+- **SumatraPDF** - [Stáhnout](https://www.sumatrapdfreader.org/download-free-pdf-viewer)
+- **IrfanView** - [Stáhnout](https://www.irfanview.com/) (pro štítky)
+- **Windows** - aplikace je navržena pro Windows prostředí
 
-2. **Nainstalujte SumatraPDF**
-   - Potřebné pro tisk účtenek
-   - [Stáhněte zde](https://www.sumatrapdfreader.org/download-free-pdf-viewer)
-   - Výchozí instalační cesta: `C:\\Users\\team\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`
+### 2. Setup
+```bash
+# 1. Klonovat/stáhnout projekt
+git clone [repo-url]
+cd print-agent
 
-3. **Nainstalujte závislosti**
-   ```bash
-   npm install
-   ```
+# 2. Nainstalovat závislosti
+npm install
 
-4. **Vytvořte .env soubor**
-   ```env
-   RECEIPT_PRINTER=EPSON TM-T20III Receipt
-   STICKER_PRINTER=Brother QL-700
-   SUMATRA_PATH=C:\\Users\\team\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe
-   ```
+# 3. Vytvořit .env soubor (viz níže)
 
-5. **Spusťte server**
-   ```bash
-   npm start
-   ```
+# 4. Přidat Bebas Neue font (viz níže)
 
-## ⚙️ Konfigurace
+# 5. Spustit server
+npm start
+```
 
-### Tiskárny
-- **Účtenky**: Epson TM-T20III
-  - Musí být nastavena jako výchozí tiskárna Windows
-  - Název v Windows musí odpovídat `RECEIPT_PRINTER` v .env
+### 3. Konfigurace (.env soubor)
+```env
+# Názvy tiskáren (musí odpovídat názvům v Windows)
+RECEIPT_PRINTER=EPSON TM-T20III Receipt
+STICKER_PRINTER=Brother QL-700
 
-- **Štítky**: Brother QL-700
-  - Musí být nainstalovaný ovladač
-  - Název v Windows musí odpovídat `STICKER_PRINTER` v .env
+# Cesty k aplikacím
+SUMATRA_PATH=C:\Users\team\AppData\Local\SumatraPDF\SumatraPDF.exe
+IRFANVIEW_PATH=C:\Program Files\IrfanView\i_view64.exe
 
-### Porty
-- Výchozí port: 8000
-- Lze změnit v .env: `PORT=3000`
+# Server port
+PORT=8000
+```
 
-## 🌐 API Endpointy
+### 4. Font setup
+Pro správný vzhled účtenek potřebujete **Bebas Neue** font:
 
-### 1. Tisk účtenky
+```
+print-agent/
+  - fonts/
+    - BebasNeue-Regular.ttf  ← stáhnout z Google Fonts
+  - templates/
+  - server.js
+  - ...
+```
+
+**Stáhnout font:**
+1. Jděte na [Google Fonts - Bebas Neue](https://fonts.google.com/specimen/Bebas+Neue)
+2. Stáhněte TTF soubor
+3. Uložte jako `fonts/BebasNeue-Regular.ttf`
+
+---
+
+## 🌐 API Reference
+
+### Základní info
+- **Base URL:** `http://localhost:8000`
+- **Content-Type:** `application/json`
+- **Všechny endpointy:** POST kromě healthcheck
+
+### 📄 Tisk účtenky
 **POST** `/print-receipt`
 
 ```json
 {
-  "receiptNo": "123",
-  "createdAt": "2024-03-18 12:34",
+  "orderNumber": "8932",
+  "receiptNumber": "12345", 
+  "createdAt": "02.07.2024 12:29:50",
+  "customerName": "Walk-in Customer",
   "items": [
     {
+      "name": "Iced Americano (700ml)",
       "qty": 1,
-      "name": "Brown Sugar Milk Tea",
-      "price": 89
+      "unitPrice": 130.00,
+      "taxCodes": "A"
     }
   ],
-  "totalCZK": 89,
-  "totalEUR": 3.50,
-  "exchangeRate": "25.4 CZK/EUR",
-  "paymentMethod": "Hotovost"
+  "subtotal": 108.26,
+  "vat": [
+    {
+      "rate": 21,
+      "amount": 21.74
+    }
+  ],
+  "totalCZK": 130.00,
+  "totalEUR": 5.12,
+  "exchangeRate": "25.4",
+  "paymentMethod": "Card - Contactless"
 }
 ```
 
-### 2. Tisk štítku
+**Volitelné parametry:**
+- `customerPhone`, `customerEmail` - kontakty zákazníka
+- `discountAmount`, `discountPercent` - slevy
+- `change` - vydané
+- `companyPhone` - telefon firmy
+
+### 🏷️ Tisk štítku  
 **POST** `/print-sticker`
 
 ```json
 {
   "pcs": "1",
-  "name": "Brown Sugar 700ml",
-  "order": "123",
+  "name": "Brown Sugar Milk Tea 700ml", 
+  "order": "8932",
   "round": "1",
   "sweetness": "less sweet",
-  "ice": "less ice",
-  "message": "Smile, You are beautiful!",
-  "toppings": ["Blueberry", "Peach"]
+  "ice": "normal ice",
+  "message": "Enjoy your drink!",
+  "toppings": ["Tapioca Pearls", "Brown Sugar"]
 }
 ```
 
-### 3. Healthcheck
-**GET** `/healthcheck`
-
-Vrací: `{"status": "ok"}`
-
-### 4. Otevření pokladní zásuvky
+### 💰 Otevření zásuvky
 **POST** `/open-drawer`
 
-Otevře pokladní zásuvku pomocí ESC/POS příkazu poslaného přes Windows API na tiskárnu.
+```json
+{}
+```
 
-Používá C# program s Windows API pro přímý RAW tisk na tiskárnu:
-- ESC/POS příkaz: `0x1B 0x70 0x30 0x37 0x79`
-- Automatické vytvoření a smazání dočasných souborů
-- Kontrola úspěšnosti operace
+### ❤️ Health Check
+**GET** `/healthcheck`
 
-Odpověď:
+**Response:**
 ```json
 {
   "status": "ok",
-  "message": "Pokladní zásuvka otevřena"
+  "timestamp": "2024-07-02T12:29:50.123Z"
 }
 ```
 
-## 📝 Příklady použití
+---
 
-### Tisk účtenky
-```javascript
-fetch('http://localhost:8000/print-receipt', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    receiptNo: "123",
-    createdAt: "2024-03-18 12:34",
-    items: [{
-      qty: 1,
-      name: "Brown Sugar Milk Tea",
-      price: 89
-    }],
-    totalCZK: 89,
-    totalEUR: 3.50,
-    exchangeRate: "25.4 CZK/EUR",
-    paymentMethod: "Hotovost"
-  })
-})
+## 🎨 Design účtenky
+
+Účtenka má moderní design s těmito prvky:
+
+### Struktura
+1. **Header** - číslo objednávky vpravo nahoře
+2. **Logo** - LOOTEA (Bebas Neue 25pt)
+3. **Company info** - název, adresa, VAT
+4. **Receipt details** - číslo účtenky, datum
+5. **Items** - položky s cenami
+6. **Summary** - subtotal, daně, slevy
+7. **Total** - celková částka (výrazně)
+8. **Payment** - způsob platby, zaplaceno
+9. **Footer** - kurz, social media, @looteacz
+
+### Typography
+- **Font:** Bebas Neue (fallback: Helvetica)
+- **Velikosti:** 12-25pt podle sekce
+- **Layout:** 80mm šířka s 1cm marginy
+
+---
+
+## 🚁 Spuštění jako služba (NSSM)
+
+Pro produkční nasazení doporučujeme spustit jako Windows službu:
+
+```cmd
+# 1. Stáhnout NSSM z https://nssm.cc/
+# 2. Otevřít CMD jako admin
+# 3. Nainstalovat službu
+
+nssm install LooteaPrintAgent
+# Path: C:\Program Files\nodejs\node.exe  
+# Startup directory: C:\path\to\print-agent
+# Arguments: server.js
+
+# 4. Spustit službu
+nssm start LooteaPrintAgent
 ```
 
-### Tisk štítku
-```javascript
-fetch('http://localhost:8000/print-sticker', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    pcs: "1",
-    name: "Brown Sugar 700ml",
-    order: "123",
-    round: "1",
-    sweetness: "less sweet",
-    ice: "less ice",
-    message: "Smile, You are beautiful!",
-    toppings: ["Blueberry", "Peach"]
-  })
-})
+**Výhody:**
+- Automatické spuštění při startu Windows
+- Běh na pozadí bez oken
+- Restart při pádu aplikace
+- Nezávislé na přihlášení uživatele
+
+---
+
+## 🔧 Řešení problémů
+
+### Tiskárna nenalezena
+```
+Error: Printer 'EPSON TM-T20III Receipt' not found
+```
+**Řešení:**
+1. Zkontrolujte název tiskárny v Windows (Control Panel → Devices and Printers)
+2. Aktualizujte `.env` soubor s přesným názvem
+3. Restartujte print agent
+
+### Font se nenačte
+```
+Bebas Neue font not found, using default fonts
+```
+**Řešení:**
+1. Stáhněte `BebasNeue-Regular.ttf` z Google Fonts
+2. Uložte do `fonts/BebasNeue-Regular.ttf`
+3. Restartujte server
+
+### PDF se nevytiskne
+**Řešení:**
+1. Zkontrolujte cestu k SumatraPDF v `.env`
+2. Ověřte, že SumatraPDF je nainstalované
+3. Zkuste manuálně vytisknout PDF z SumatraPDF
+
+### Server se nespustí
+```
+Error: listen EADDRINUSE :::8000
+```
+**Řešení:**
+1. Port 8000 je obsazený
+2. Změňte port v `.env`: `PORT=8001`
+3. Nebo ukončete aplikaci na portu 8000
+
+---
+
+## 📂 Struktura projektu
+
+```
+print-agent/
+├── fonts/
+│   └── BebasNeue-Regular.ttf     # Font pro účtenky
+├── print/
+│   ├── printReceipt.js           # Tisk účtenek
+│   └── printSticker.js           # Tisk štítků
+├── templates/
+│   ├── receiptTemplate.js        # PDF template účtenky
+│   └── stickerTemplate.html      # HTML template štítku
+├── temp/                         # Dočasné soubory (auto-cleanup)
+├── .env                          # Konfigurace
+├── server.js                     # Hlavní server
+├── package.json                  # NPM závislosti
+└── README.md                     # Tato dokumentace
 ```
 
-## ❗ Řešení problémů
+---
 
-### Účtenky se netisknou
-1. Zkontrolujte, zda je SumatraPDF nainstalován na správné cestě
-2. Zkontrolujte název tiskárny v Windows
-3. Zkontrolujte, zda je tiskárna online a má papír
+## 🤝 Contributing
 
-### Štítky se netisknou
-1. Zkontrolujte, zda je Brother QL-700 zapnutá a připojená
-2. Zkontrolujte název tiskárny v Windows
-3. Zkontrolujte, zda je nainstalovaný správný ovladač
-4. Podívejte se do složky `temp/` na vygenerované PNG soubory
+1. Fork projekt
+2. Vytvořte feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit změny (`git commit -m 'Add amazing feature'`)
+4. Push do branch (`git push origin feature/amazing-feature`)
+5. Otevřete Pull Request
 
-### Server nejde spustit
-1. Zkontrolujte, zda běží Node.js: `node --version`
-2. Zkontrolujte, zda jsou nainstalovány všechny závislosti: `npm install`
-3. Zkontrolujte, zda není port 8000 obsazený
-4. Zkontrolujte .env soubor
+---
 
-## 📦 Technické detaily
+## 📄 License
 
-### Štítky
-- Rozměr: 62mm x 29mm
-- Rozlišení: 300 DPI
-- Formát: PNG s DPI metadaty
-- Rozměr v pixelech: 732x342
+MIT License - viz [LICENSE](LICENSE) soubor.
 
-### Účtenky
-- Šířka: 80mm
-- Formát: PDF
-- Font: Helvetica
-- Velikost QR kódu: 20x20mm
+---
+
+## 🙋‍♂️ Support
+
+**Problémy s instalací?** Otevřete [GitHub Issue](../../issues)
+
+**Potřebujete pomoc?** Kontaktujte vývojářský tým.
+
+---
+
+*Vytvořeno s ❤️ pro LOOTEA Bubble Tea*
