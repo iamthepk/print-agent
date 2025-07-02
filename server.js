@@ -3,28 +3,12 @@ import express from 'express'
 import cors from 'cors'
 import { printReceipt } from './print/printReceipt.js'
 import { printSticker } from './print/printSticker.js'
-import fs from 'fs'
-import path from 'path'
 
 dotenv.config()
 
 const app = express()
 app.use(cors())
 app.use(express.json())
-
-// Vyčisti temp složku při startu serveru
-const tempDir = path.join(process.cwd(), 'temp')
-if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir)
-}
-fs.readdirSync(tempDir).forEach(file => {
-    try {
-        fs.unlinkSync(path.join(tempDir, file))
-        console.log('🗑️ Smazán soubor z temp:', file)
-    } catch (e) {
-        console.warn('⚠️ Nepodařilo se smazat soubor z temp:', file, e.message)
-    }
-})
 
 console.log('📄 RECEIPT_PRINTER:', process.env.RECEIPT_PRINTER || 'NENASTAVENO')
 console.log('🏷️ STICKER_PRINTER:', process.env.STICKER_PRINTER || 'NENASTAVENO')
@@ -33,29 +17,92 @@ console.log('🏷️ STICKER_PRINTER:', process.env.STICKER_PRINTER || 'NENASTAV
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
-        <html lang="cs">
+        <html>
         <head>
-            <meta charset="utf-8">
-            <title>LOOTEA PRINT AGENT</title>
+            <title>Print Agent API</title>
             <style>
                 body {
-                    min-height: 100vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: #fafbfc;
-                    margin: 0;
+                    font-family: Arial, sans-serif;
+                    max-width: 800px;
+                    margin: 20px auto;
+                    padding: 0 20px;
+                    line-height: 1.6;
                 }
-                h1 {
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    font-size: 3rem;
-                    color: #2c3e50;
-                    letter-spacing: 2px;
+                pre {
+                    background: #f5f5f5;
+                    padding: 15px;
+                    border-radius: 5px;
+                    overflow-x: auto;
                 }
+                .endpoint {
+                    margin-bottom: 30px;
+                }
+                h1 { color: #2c3e50; }
+                h2 { color: #34495e; }
+                code { background: #f8f9fa; padding: 2px 5px; border-radius: 3px; }
             </style>
         </head>
         <body>
-            <h1>LOOTEA PRINT AGENT</h1>
+            <h1>🖨️ Print Agent API</h1>
+            <p>Lokální tiskový agent pro tisk účtenek a štítků.</p>
+            
+            <div class="endpoint">
+                <h2>📝 Tisk účtenky</h2>
+                <code>POST /print-receipt</code>
+                <pre>
+{
+  "receiptNo": "123",
+  "createdAt": "2024-03-18 12:34",
+  "items": [
+    {
+      "qty": 1,
+      "name": "Brown Sugar Milk Tea",
+      "price": 89
+    }
+  ],
+  "totalCZK": 89,
+  "totalEUR": 3.50,
+  "exchangeRate": "25.4 CZK/EUR",
+  "paymentMethod": "Hotovost"
+}</pre>
+            </div>
+
+            <div class="endpoint">
+                <h2>🏷️ Tisk štítku</h2>
+                <code>POST /print-sticker</code>
+                <pre>
+{
+  "pcs": "1",
+  "name": "Brown Sugar 700ml",
+  "order": "123",
+  "round": "1",
+  "sweetness": "less sweet",
+  "ice": "less ice",
+  "message": "Smile, You are beautiful!",
+  "toppings": ["Blueberry", "Peach"]
+}</pre>
+            </div>
+
+            <div class="endpoint">
+                <h2>💰 Otevření pokladní zásuvky</h2>
+                <code>POST /open-drawer</code>
+                <p>Otevře pokladní zásuvku pomocí ESC/POS příkazu.</p>
+                <p>Odpověď: <code>{"status": "ok", "message": "Pokladní zásuvka otevřena"}</code></p>
+            </div>
+
+            <div class="endpoint">
+                <h2>💓 Healthcheck</h2>
+                <code>GET /healthcheck</code>
+                <p>Vrací: <code>{"status": "ok"}</code></p>
+            </div>
+
+            <footer style="margin-top: 50px; padding-top: 20px; border-top: 1px solid #eee; color: #666;">
+                <p>Tiskárny:</p>
+                <ul>
+                    <li>Účtenky: ${process.env.RECEIPT_PRINTER || 'NENASTAVENO'}</li>
+                    <li>Štítky: ${process.env.STICKER_PRINTER || 'NENASTAVENO'}</li>
+                </ul>
+            </footer>
         </body>
         </html>
     `)
