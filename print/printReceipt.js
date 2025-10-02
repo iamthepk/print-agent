@@ -33,11 +33,14 @@ async function printReceipt(order) {
             throw new Error(`❌ PDF soubor nebyl vytvořen na cestě: ${pdfPath}`);
         }
 
-        const command = `${SUMATRA_PATH} -print-to "${RECEIPT_PRINTER}" "${pdfPath}"`;
-        console.log('🖨️ Spouštím tisk:', command);
+        const command = `${SUMATRA_PATH} -print-to "${RECEIPT_PRINTER}" -silent "${pdfPath}"`;
+        console.log('🖨️ Spouštím tisk (silent mode):', command);
 
-        // Použijeme promisifikovanou verzi exec
-        const { stdout, stderr } = await execAsync(command);
+        // Použijeme promisifikovanou verzi exec s možnostmi pro tichý běh
+        const { stdout, stderr } = await execAsync(command, {
+            windowsHide: true,
+            timeout: 30000
+        });
 
         if (stderr) {
             console.error('⚠️ SumatraPDF varování:', stderr);

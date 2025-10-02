@@ -90,12 +90,15 @@ export async function printSticker(drink = {}) {
             throw new Error(`❌ IrfanView nebyl nalezen na cestě: ${IRFANVIEW_PATH}`)
         }
 
-        // Tisk přes IrfanView (nyní s async/await)
-        const command = `"${IRFANVIEW_PATH}" "${imagePath}" /print="${STICKER_PRINTER}" /silent`
-        console.log('🖨️ Spouštím tisk:', command)
+        // Tisk přes IrfanView (nyní s async/await a silent mode)
+        const command = `"${IRFANVIEW_PATH}" "${imagePath}" /print="${STICKER_PRINTER}" /silent /hide`
+        console.log('🖨️ Spouštím tisk (silent mode):', command)
 
         try {
-            const { stdout, stderr } = await execAsync(command)
+            const { stdout, stderr } = await execAsync(command, {
+                windowsHide: true,
+                timeout: 30000
+            })
             console.log(`✅ Sticker vytisknut na ${STICKER_PRINTER}`)
             if (stdout) console.log('Stdout:', stdout)
             if (stderr) console.log('Stderr:', stderr)

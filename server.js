@@ -233,7 +233,7 @@ app.get('/check-printer', async (req, res) => {
         // Zkontrolujeme dostupnost tiskárny pomocí wmic
         const command = `wmic printer where "name='${RECEIPT_PRINTER}'" get name,workoffline,status`;
 
-        exec(command, (error, stdout, stderr) => {
+        exec(command, { windowsHide: true }, (error, stdout, stderr) => {
             if (error) {
                 console.error('❌ Chyba při kontrole tiskárny:', error);
                 res.status(500).json({
@@ -277,13 +277,21 @@ app.post('/open-drawer', async (req, res) => {
         // Vytvoříme dočasný soubor s příkazem
         const timestamp = Date.now();
         const path = await import('path');
-        const tempFile = path.resolve(`./temp/drawer_${timestamp}.txt`);
+        const os = await import('os');
+
+        // Použijeme temp složku systému místo relativní cesty
+        const tempDir = path.join(os.tmpdir(), 'print-agent');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+
+        const tempFile = path.join(tempDir, `drawer_${timestamp}.txt`);
         fs.writeFileSync(tempFile, drawerCommand);
 
         // Pošleme příkaz na tiskárnu
         const command = `type "${tempFile}" > "\\\\localhost\\${RECEIPT_PRINTER}"`;
 
-        exec(command, (error, stdout, stderr) => {
+        exec(command, { windowsHide: true }, (error, stdout, stderr) => {
             console.log('📋 Výstup příkazu:', stdout);
             if (stderr) console.log('⚠️ Chybové hlášky:', stderr);
 
