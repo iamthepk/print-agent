@@ -1,4 +1,4 @@
-# 🖨️ Print Agent Server 🖨️🖨️🖨️🖨️
+# 🖨️ Print Agent Server
 
 Lokální tiskový agent pro POS systém s podporou účtenek a štítků.
 
