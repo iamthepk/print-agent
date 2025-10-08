@@ -244,15 +244,27 @@ app.get('/check-printer', async (req, res) => {
                 return;
             }
 
-            const isAvailable = stdout.toLowerCase().includes(RECEIPT_PRINTER.toLowerCase()) &&
-                !stdout.toLowerCase().includes('workoffline');
+            // Vylepšená logika pro kontrolu dostupnosti
+            const output = stdout.toLowerCase();
+            const printerFound = output.includes(RECEIPT_PRINTER.toLowerCase());
+            const isOffline = output.includes('workoffline') && output.includes('true');
+            const hasUnknownStatus = output.includes('unknown');
+
+            // Tiskárna je dostupná pokud:
+            // 1. Je nalezena v seznamu
+            // 2. Není explicitně offline
+            // 3. Status "Unknown" není problém (tiskárna může fungovat i s Unknown statusem)
+            const isAvailable = printerFound && !isOffline;
 
             res.json({
                 status: 'ok',
                 printer: RECEIPT_PRINTER,
                 available: isAvailable,
                 details: stdout.trim(),
-                message: isAvailable ? 'Tiskárna je dostupná' : 'Tiskárna není dostupná nebo je offline'
+                message: isAvailable ? 'Tiskárna je dostupná' :
+                    isOffline ? 'Tiskárna je offline' :
+                        hasUnknownStatus ? 'Tiskárna je dostupná (status: Unknown)' :
+                            'Tiskárna není nalezena'
             });
         });
     } catch (e) {
@@ -348,6 +360,42 @@ app.post('/open-drawer', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8000
-app.listen(PORT, () => {
-    console.log(`🚀 Print agent běží na http://localhost:${PORT}`)
-})
+
+// Funkce pro kontrolu, zda je port už obsazený
+async function checkPort(port) {
+    const net = await import('net');
+    return new Promise((resolve) => {
+        const server = net.createServer();
+        server.listen(port, () => {
+            server.once('close', () => resolve(true));
+            server.close();
+        });
+        server.on('error', () => resolve(false));
+    });
+}
+
+// Spuštění serveru s kontrolou portu
+async function startServer() {
+    const isPortAvailable = await checkPort(PORT);
+
+    if (!isPortAvailable) {
+        console.log(`⚠️ Port ${PORT} je už obsazený. Zkouším port ${PORT + 1}...`);
+        const altPort = PORT + 1;
+        const isAltPortAvailable = await checkPort(altPort);
+
+        if (isAltPortAvailable) {
+            app.listen(altPort, () => {
+                console.log(`🚀 Print agent běží na http://localhost:${altPort}`)
+            });
+        } else {
+            console.error(`❌ Ani port ${PORT} ani ${altPort} není dostupný. Ukončuji aplikaci.`);
+            process.exit(1);
+        }
+    } else {
+        app.listen(PORT, () => {
+            console.log(`🚀 Print agent běží na http://localhost:${PORT}`)
+        });
+    }
+}
+
+startServer();
