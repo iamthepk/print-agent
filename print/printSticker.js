@@ -36,7 +36,7 @@ export async function printSticker(drink = {}) {
         drink = { ...defaultDrink, ...drink }
 
         const toppingsHtml = (drink.toppings || [])
-            .map(t => `<div class="line">1 Balls: ${t}</div>`)
+            .map(t => `<div class="topping">1x Balls: ${t}</div>`)
             .join('\n')
 
         const data = {

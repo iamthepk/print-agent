@@ -3,13 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <style>
+      @font-face {
+        font-family: "Atozimple";
+        src: url("../fonts/Atozimple Regular.otf") format("opentype");
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      @font-face {
+        font-family: "Atozimple";
+        src: url("../fonts/Atozimple Medium.otf") format("opentype");
+        font-weight: 500;
+        font-style: normal;
+      }
+
       html,
       body {
         width: 732px;
         height: 342px;
         margin: 0;
         padding: 0;
-        font-family: sans-serif;
+        font-family: "Atozimple", sans-serif;
         font-size: 5mm;
         box-sizing: border-box;
       }
@@ -25,37 +39,52 @@
 
       .top-row {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-start;
+        gap: 60mm;
         width: 100%;
         margin-bottom: 1mm;
       }
 
       .line {
-        margin-bottom: 0.8mm;
+        margin-bottom: 1.5mm;
         white-space: pre-wrap;
         word-break: break-word;
         width: 100%;
+        font-size: 6mm;
       }
 
       .drink-name {
-        font-weight: bold;
+        font-family: "Atozimple Regular", sans-serif;
+        font-size: 6.5mm;
       }
 
       .drink-note {
-        font-style: italic;
-        font-size: 3.1mm;
-        margin-bottom: 1mm;
+        font-family: "Atozimple Medium", sans-serif;
+        font-size: 5.5mm;
+        margin-bottom: 2.5mm;
+      }
+
+      .message {
+        font-family: "Atozimple Regular", sans-serif;
+      }
+
+      .order-info {
+        font-family: "Atozimple Regular", sans-serif;
+      }
+      .topping {
+        font-family: "Atozimple Regular", sans-serif;
+        font-size: 6.2mm;
       }
     </style>
   </head>
   <body>
     <div class="wrapper">
       <div class="top-row">
-        <div>{{message}}</div>
-        <div>Order: {{order}}, Round: {{round}}</div>
+        <div class="message">{{message}}</div>
+        <div class="order-info">Order: {{order}}, Round: {{round}}</div>
       </div>
 
-      <div class="line">{{pcs}} <span class="drink-name">{{name}}</span></div>
+      <div class="line"><span class="drink-name">{{name}}</span></div>
 
       <div class="drink-note">{{sweetness}} ; {{ice}}</div>
 
