@@ -126,18 +126,33 @@ function generateReceiptPDF(order) {
         doc.moveDown(0.3);
     }
 
+    // DEBUG - vytisknout info na účtenku
+    doc.fontSize(8).font("Bebas Neue");
+    doc.text(`DEBUG: isRefund=${isRefund}, orig=${order.originalReceiptNumber || 'NONE'}`);
+    doc.fontSize(12);
+    doc.moveDown(0.2);
+
+    // Receipt number (main receipt number)
+    doc.fontSize(12).font("Bebas Neue");
     doc.text(`Receipt No.: ${order.receiptNumber || order.orderNumber}`);
+
+    // VŽDY zobrazit originalReceiptNumber pokud existuje
+    if (order.originalReceiptNumber) {
+        doc.text(`Refunded Receipt No.: ${order.originalReceiptNumber}`);
+    }
+
+    // Customer name
+    if (order.customerName && order.customerName !== "Walk-in Customer") {
+        doc.text(`Customer: ${order.customerName}`);
+        doc.moveDown(0.2);
+    }
+
     doc.text(`${order.createdAt}`);
 
     // Solid line separator
     doc.moveDown(0.3);
     doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
     doc.moveDown(0.3);
-
-    // Customer info if exists
-    if (order.customerName && order.customerName !== "Walk-in Customer") {
-        doc.text(`Customer: ${order.customerName}`);
-    }
 
     doc.moveDown(0.5);
 
@@ -195,9 +210,34 @@ function generateReceiptPDF(order) {
         });
     }
 
-    // Discount
+    // Discount - show how much customer saved
     if (order.discountAmount && order.discountAmount > 0) {
-        leftRightText("Discount:", `-${order.discountAmount.toFixed(2)} CZK`);
+        // Build discount label with type
+        let discountLabel = "Discount";
+
+        // Priority: discountPercent > discountName > discountType
+        if (order.discountPercent) {
+            const percent = Number(order.discountPercent);
+            if (percent > 0) {
+                discountLabel = `Discount ${percent}%`;
+            }
+        } else if (order.discountName) {
+            const name = String(order.discountName).trim();
+            if (name !== "") {
+                discountLabel = `Discount (${name})`;
+            }
+        } else if (order.discountType === "fixed") {
+            discountLabel = `Discount ${Math.round(order.discountAmount)} CZK`;
+        }
+
+        leftRightText(discountLabel + ":", `-${order.discountAmount.toFixed(2)} CZK`);
+
+        // Show savings message
+        doc.fontSize(10).font("Bebas Neue");
+        doc.fillColor('#666666');
+        doc.text(`You saved ${order.discountAmount.toFixed(2)} CZK!`, { align: "center" });
+        doc.fillColor('#000000');
+        doc.fontSize(12);
     }
 
     doc.moveDown(0.3);
@@ -238,11 +278,17 @@ function generateReceiptPDF(order) {
             : order.paymentMethod || "Card - Contactless";
 
         leftRightText(paymentMethod + ":", `${order.totalCZK.toFixed(2)} CZK`);
-        leftRightText("Paid amount:", `${order.totalCZK.toFixed(2)} CZK`);
 
-        // Change
-        if (order.change && order.change > 0) {
-            leftRightText("Change:", `${order.change.toFixed(2)} CZK`);
+        // For cash payments, show given amount and change
+        if (order.givenAmount && order.givenAmount > 0) {
+            leftRightText("Given amount:", `${order.givenAmount.toFixed(2)} CZK`);
+
+            if (order.change && order.change > 0) {
+                leftRightText("Change:", `${order.change.toFixed(2)} CZK`);
+            }
+        } else {
+            // Standard paid amount (for card payments)
+            leftRightText("Paid amount:", `${order.totalCZK.toFixed(2)} CZK`);
         }
     }
 

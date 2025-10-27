@@ -75,27 +75,43 @@ POST /print-receipt
 Content-Type: application/json
 
 {
-  "receiptNo": "123",
+  "orderNumber": "123",
+  "receiptNumber": "R-001",
   "createdAt": "2024-03-18 12:34",
+  "customerName": "Jan Novák",
   "items": [
     {
-      "qty": 1,
+      "qty": 2,
       "name": "Brown Sugar Milk Tea",
       "price": 89
     }
   ],
-  "totalCZK": 89,
-  "totalEUR": 3.50,
+  "subtotal": 178.00,
+  "vat": [
+    {
+      "rate": 21,
+      "amount": 30.79
+    }
+  ],
+  "discountAmount": 20.00,
+  "discountPercent": 10,
+  "totalCZK": 158.00,
+  "totalEUR": 6.22,
   "exchangeRate": "25.4 CZK/EUR",
-  "paymentMethod": "Hotovost"
+  "paymentMethod": "Hotovost",
+  "givenAmount": 200.00,
+  "change": 42.00
 }
 ```
 
 #### Refund účtenka (vrácení peněz)
-Pro refund účtenku stačí přidat **`"isRefund": true`** (nebo poslat záporný `totalCZK`). Automaticky se:
+Pro refund účtenku stačí přidat **`"isRefund": true`**. Automaticky se:
 - Zobrazí velký nadpis **"REFUND RECEIPT"**
+- Zobrazí odkaz na původní účtenku: **"Refund for Receipt: RF-001"**
 - Všechny ceny se zobrazí jako záporné hodnoty
 - Text se změní na "Refunded amount" místo "Paid amount"
+
+**Důležité:** Refund účtenka má **vlastní nové číslo** (R-002) a odkazuje na původní účtenku (RF-001).
 
 ```http
 POST /print-receipt
@@ -103,8 +119,10 @@ Content-Type: application/json
 
 {
   "isRefund": true,
-  "receiptNo": "R123",
+  "receiptNumber": "R-002",
+  "originalReceiptNumber": "RF-001",
   "createdAt": "2024-03-18 13:00",
+  "customerName": "Jan Novák",
   "items": [
     {
       "qty": 1,
@@ -115,6 +133,58 @@ Content-Type: application/json
   "totalCZK": 89,
   "totalEUR": 3.50,
   "paymentMethod": "Card"
+}
+```
+
+### 📝 Všechna podporovaná pole
+
+```javascript
+{
+  // === ZÁKLADNÍ INFO ===
+  "orderNumber": "123",              // Číslo objednávky (#123 nahoře)
+  "receiptNumber": "R-001",          // Číslo účtenky
+  "createdAt": "2024-03-18 12:34",  // Datum a čas
+  "customerName": "Jan Novák",       // Jméno zákazníka
+  
+  // === REFUND ===
+  "isRefund": true,                  // true = refund účtenka
+  "originalReceiptNumber": "R-001",  // Odkaz na původní účtenku (jen pro refund)
+  
+  // === POLOŽKY ===
+  "items": [
+    {
+      "qty": 2,                      // Množství
+      "name": "Brown Sugar Tea",     // Název
+      "price": 89                    // Cena (nebo "unitPrice")
+    }
+  ],
+  
+  // === CENY ===
+  "subtotal": 178.00,                // Mezisoučet
+  "totalCZK": 178.00,                // Celkem v Kč
+  "totalEUR": 7.00,                  // Celkem v EUR (volitelné)
+  
+  // === DPH ===
+  "vat": [
+    {
+      "rate": 21,                    // Sazba (21%)
+      "amount": 30.79                // Částka DPH
+    }
+  ],
+  
+  // === SLEVA ===
+  "discountAmount": 20.00,           // Sleva v Kč (povinné pro slevu)
+  "discountPercent": 10,             // Sleva v % (zobrazí "Discount (10%): -20.00 CZK")
+  "discountName": "Student",         // Název slevy (zobrazí "Discount (Student): -20.00 CZK")
+  "discountType": "fixed",           // Typ slevy: "percent" nebo "fixed" (zobrazí "Discount (20 CZK): -20.00 CZK")
+  
+  // === PLATBA ===
+  "paymentMethod": "Hotovost",       // Metoda platby
+  "givenAmount": 200.00,             // Částka od zákazníka (jen hotovost)
+  "change": 42.00,                   // Vráceno (automaticky se spočítá pokud chybí)
+  
+  // === DALŠÍ ===
+  "exchangeRate": "25.4 CZK/EUR"     // Kurz (volitelné)
 }
 ```
 
