@@ -126,17 +126,11 @@ function generateReceiptPDF(order) {
         doc.moveDown(0.3);
     }
 
-    // DEBUG - vytisknout info na účtenku
-    doc.fontSize(8).font("Bebas Neue");
-    doc.text(`DEBUG: isRefund=${isRefund}, orig=${order.originalReceiptNumber || 'NONE'}`);
-    doc.fontSize(12);
-    doc.moveDown(0.2);
-
     // Receipt number (main receipt number)
     doc.fontSize(12).font("Bebas Neue");
     doc.text(`Receipt No.: ${order.receiptNumber || order.orderNumber}`);
 
-    // VŽDY zobrazit originalReceiptNumber pokud existuje
+    // For refunds, show which receipt is being refunded
     if (order.originalReceiptNumber) {
         doc.text(`Refunded Receipt No.: ${order.originalReceiptNumber}`);
     }
@@ -144,7 +138,6 @@ function generateReceiptPDF(order) {
     // Customer name
     if (order.customerName && order.customerName !== "Walk-in Customer") {
         doc.text(`Customer: ${order.customerName}`);
-        doc.moveDown(0.2);
     }
 
     doc.text(`${order.createdAt}`);
@@ -233,11 +226,11 @@ function generateReceiptPDF(order) {
         leftRightText(discountLabel + ":", `-${order.discountAmount.toFixed(2)} CZK`);
 
         // Show savings message
-        doc.fontSize(10).font("Bebas Neue");
+        doc.fontSize(11).font("Bebas Neue");
         doc.fillColor('#666666');
         doc.text(`You saved ${order.discountAmount.toFixed(2)} CZK!`, { align: "center" });
         doc.fillColor('#000000');
-        doc.fontSize(12);
+        doc.fontSize(13);
     }
 
     doc.moveDown(0.3);
