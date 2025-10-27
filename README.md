@@ -2,6 +2,21 @@
 
 Lokální tiskový agent pro POS systém s podporou účtenek a štítků.
 
+## ✨ Hlavní funkce
+
+- 🧾 **Tisk účtenek** na termální tiskárně (Epson TM-T20III)
+  - ✅ Normální prodejní účtenky
+  - ✅ **Refund účtenky** (vrácení peněz) se záporými hodnotami pro POS
+  - ✅ **Zobrazení slev s procenty** (např. "Discount 10%: -20.00 CZK")
+  - ✅ **Odkaz na původní účtenku** u refundů ("Refunded Receipt No.: ...")
+  - ✅ Hotovostní platby s automatickým výpočtem vrácených peněz
+  - ✅ DPH, kurzy měn, informace o zákazníkovi
+- 🏷️ **Tisk štítků** na štítkové tiskárně (Brother QL-700)
+- 💰 **Otevírání pokladní zásuvky**
+- 🚀 **Automatické spuštění** při startu Windows
+- 🔄 **Běží na pozadí** (silent mode)
+- 📡 **REST API** pro komunikaci s POS systémem
+
 ## 🚀 Rychlý start
 
 ### Spuštění serveru
@@ -105,13 +120,18 @@ Content-Type: application/json
 ```
 
 #### Refund účtenka (vrácení peněz)
-Pro refund účtenku stačí přidat **`"isRefund": true`**. Automaticky se:
-- Zobrazí velký nadpis **"REFUND RECEIPT"**
-- Zobrazí odkaz na původní účtenku: **"Refund for Receipt: RF-001"**
-- Všechny ceny se zobrazí jako záporné hodnoty
-- Text se změní na "Refunded amount" místo "Paid amount"
 
-**Důležité:** Refund účtenka má **vlastní nové číslo** (R-002) a odkazuje na původní účtenku (RF-001).
+**🚨 DŮLEŽITÉ pravidla pro refund:**
+1. ✅ **`isRefund: true`** - MUSÍ být nastaveno
+2. ✅ **`originalReceiptNumber`** - Odkaz na původní účtenku (POVINNÉ)
+3. ✅ **`totalCZK`** - MUSÍ být **ZÁPORNÉ** (např. -89.0) pro POS systém
+4. ✅ **Nové `receiptNumber`** - Refund má vlastní číslo (ne stejné jako původní)
+
+**Co se zobrazí na účtence:**
+- Velký nadpis **"REFUND RECEIPT"**
+- **"Refunded Receipt No.: RF-001"** (odkaz na původní účtenku)
+- Všechny ceny jako záporné hodnoty (např. -89.00 CZK)
+- Text "Refunded amount" místo "Paid amount"
 
 ```http
 POST /print-receipt
@@ -119,9 +139,10 @@ Content-Type: application/json
 
 {
   "isRefund": true,
-  "receiptNumber": "R-002",
-  "originalReceiptNumber": "RF-001",
-  "createdAt": "2024-03-18 13:00",
+  "receiptNumber": "202500000000040",
+  "originalReceiptNumber": "202500000000035",
+  "orderNumber": "16",
+  "createdAt": "2024-10-27 15:00",
   "customerName": "Jan Novák",
   "items": [
     {
@@ -130,10 +151,36 @@ Content-Type: application/json
       "price": 89
     }
   ],
-  "totalCZK": 89,
-  "totalEUR": 3.50,
+  "subtotal": 89.0,
+  "vat": [
+    {
+      "rate": 21,
+      "amount": 15.41
+    }
+  ],
+  "totalCZK": -89.0,
   "paymentMethod": "Card"
 }
+```
+
+**Jak to vypadá na účtence:**
+```
+         REFUND RECEIPT
+
+Receipt No.: 202500000000040
+Refunded Receipt No.: 202500000000035  ← Odkaz
+Customer: Jan Novák
+2024-10-27 15:00
+─────────────────────────────
+Brown Sugar Milk Tea     -89.00 CZK  ← Záporné
+─────────────────────────────
+Subtotal:               -89.00 CZK
+Tax 21%:                -15.41 CZK
+
+TOTAL:                  -89.00 CZK  ← Záporné
+─────────────────────────────
+Card:                   -89.00 CZK
+Refunded amount:        -89.00 CZK
 ```
 
 ### 📝 Všechna podporovaná pole
@@ -148,7 +195,7 @@ Content-Type: application/json
   
   // === REFUND ===
   "isRefund": true,                  // true = refund účtenka
-  "originalReceiptNumber": "R-001",  // Odkaz na původní účtenku (jen pro refund)
+  "originalReceiptNumber": "R-001",  // POVINNÉ pro refund - odkaz na původní účtenku
   
   // === POLOŽKY ===
   "items": [
@@ -161,7 +208,7 @@ Content-Type: application/json
   
   // === CENY ===
   "subtotal": 178.00,                // Mezisoučet
-  "totalCZK": 178.00,                // Celkem v Kč
+  "totalCZK": 178.00,                // Celkem v Kč (pro REFUND musí být ZÁPORNÉ: -178.00)
   "totalEUR": 7.00,                  // Celkem v EUR (volitelné)
   
   // === DPH ===
@@ -173,10 +220,11 @@ Content-Type: application/json
   ],
   
   // === SLEVA ===
-  "discountAmount": 20.00,           // Sleva v Kč (povinné pro slevu)
-  "discountPercent": 10,             // Sleva v % (zobrazí "Discount (10%): -20.00 CZK")
+  "discountAmount": 20.00,           // Sleva v Kč (povinné pro zobrazení slevy)
+  "discountPercent": 10,             // Sleva v % (zobrazí "Discount 10%: -20.00 CZK")
   "discountName": "Student",         // Název slevy (zobrazí "Discount (Student): -20.00 CZK")
-  "discountType": "fixed",           // Typ slevy: "percent" nebo "fixed" (zobrazí "Discount (20 CZK): -20.00 CZK")
+  "discountType": "fixed",           // Typ slevy: "fixed" (zobrazí "Discount 20 CZK: -20.00 CZK")
+                                     // + Zobrazí se text "You saved 20.00 CZK!"
   
   // === PLATBA ===
   "paymentMethod": "Hotovost",       // Metoda platby
@@ -187,6 +235,128 @@ Content-Type: application/json
   "exchangeRate": "25.4 CZK/EUR"     // Kurz (volitelné)
 }
 ```
+
+---
+
+## 💡 Příklady kódu
+
+### Normální prodej s hotovostí a slevou
+```javascript
+const receipt = {
+  receiptNumber: "202500000000035",
+  orderNumber: "16",
+  createdAt: new Date().toLocaleString('cs-CZ'),
+  customerName: "Jana Nováková",
+  items: [
+    { qty: 2, name: "Cappuccino", price: 75 },
+    { qty: 1, name: "Brownie", price: 45 }
+  ],
+  subtotal: 195.0,
+  vat: [{ rate: 21, amount: 33.77 }],
+  discountAmount: 19.50,
+  discountPercent: 10,         // Zobrazí "Discount 10%:"
+  totalCZK: 175.50,
+  paymentMethod: "Hotovost",
+  givenAmount: 200.0,
+  change: 24.50
+};
+
+await fetch('http://localhost:8000/print-receipt', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(receipt)
+});
+```
+
+### Refund účtenka
+```javascript
+// Původní účtenka
+const originalReceipt = {
+  receiptNumber: "202500000000035",
+  totalCZK: 175.50,
+  // ... další data
+};
+
+// Vytvoření refund účtenky
+const refundReceipt = {
+  isRefund: true,                                    // ← POVINNÉ
+  receiptNumber: "202500000000040",                  // ← NOVÉ číslo
+  originalReceiptNumber: originalReceipt.receiptNumber, // ← Odkaz na původní
+  orderNumber: originalReceipt.orderNumber,
+  createdAt: new Date().toLocaleString('cs-CZ'),
+  customerName: originalReceipt.customerName,
+  items: [
+    { qty: 1, name: "Brownie", price: 45 }  // Vracené položky
+  ],
+  subtotal: 45.0,
+  vat: [{ rate: 21, amount: 7.79 }],
+  totalCZK: -45.0,                           // ← ZÁPORNÉ!
+  paymentMethod: originalReceipt.paymentMethod
+};
+
+await fetch('http://localhost:8000/print-receipt', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(refundReceipt)
+});
+```
+
+---
+
+## 🚨 Časté chyby a řešení
+
+### ❌ Chyba: Refund bez záporné hodnoty
+```javascript
+{
+  "isRefund": true,
+  "totalCZK": 45.0  // ❌ ŠPATNĚ - POS to bere jako další tržbu!
+}
+```
+**✅ Správně:**
+```javascript
+{
+  "isRefund": true,
+  "totalCZK": -45.0  // ✅ ZÁPORNÉ pro POS systém
+}
+```
+
+### ❌ Chyba: Chybí originalReceiptNumber
+```javascript
+{
+  "isRefund": true,
+  "receiptNumber": "RF-002",
+  // ❌ Chybí originalReceiptNumber
+  "totalCZK": -45.0
+}
+```
+**✅ Správně:**
+```javascript
+{
+  "isRefund": true,
+  "receiptNumber": "RF-002",
+  "originalReceiptNumber": "R-001",  // ✅ POVINNÉ
+  "totalCZK": -45.0
+}
+```
+
+### ❌ Chyba: Sleva se nezobrazuje s procenty
+```javascript
+{
+  "discountAmount": 20.0
+  // ❌ Chybí discountPercent
+}
+// Zobrazí jen: "Discount: -20.00 CZK"
+```
+**✅ Správně:**
+```javascript
+{
+  "discountAmount": 20.0,
+  "discountPercent": 10  // ✅ Přidáno
+}
+// Zobrazí: "Discount 10%: -20.00 CZK" + "You saved 20.00 CZK!"
+```
+
+---
 
 ### Tisk štítku
 ```http
