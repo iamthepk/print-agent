@@ -68,6 +68,8 @@ PORT=8000
 ## 🌐 API Endpointy
 
 ### Tisk účtenky
+
+#### Normální prodej
 ```http
 POST /print-receipt
 Content-Type: application/json
@@ -86,6 +88,33 @@ Content-Type: application/json
   "totalEUR": 3.50,
   "exchangeRate": "25.4 CZK/EUR",
   "paymentMethod": "Hotovost"
+}
+```
+
+#### Refund účtenka (vrácení peněz)
+Pro refund účtenku stačí přidat **`"isRefund": true`** (nebo poslat záporný `totalCZK`). Automaticky se:
+- Zobrazí velký nadpis **"REFUND RECEIPT"**
+- Všechny ceny se zobrazí jako záporné hodnoty
+- Text se změní na "Refunded amount" místo "Paid amount"
+
+```http
+POST /print-receipt
+Content-Type: application/json
+
+{
+  "isRefund": true,
+  "receiptNo": "R123",
+  "createdAt": "2024-03-18 13:00",
+  "items": [
+    {
+      "qty": 1,
+      "name": "Brown Sugar Milk Tea",
+      "price": 89
+    }
+  ],
+  "totalCZK": 89,
+  "totalEUR": 3.50,
+  "paymentMethod": "Card"
 }
 ```
 

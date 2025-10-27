@@ -114,8 +114,18 @@ function generateReceiptPDF(order) {
 
     doc.moveDown(0.8);
 
+    // === RECEIPT TYPE (REFUND OR NORMAL) ===
+    const isRefund = order.isRefund || order.totalCZK < 0;
+
     // === RECEIPT INFO ===
     doc.fontSize(12).font("Bebas Neue");
+
+    // Show RECEIPT TYPE header
+    if (isRefund) {
+        centerText("REFUND RECEIPT", 20, "Bebas Neue");
+        doc.moveDown(0.3);
+    }
+
     doc.text(`Receipt No.: ${order.receiptNumber || order.orderNumber}`);
     doc.text(`${order.createdAt}`);
 
@@ -145,12 +155,16 @@ function generateReceiptPDF(order) {
         const unitPrice = item.unitPrice || item.price;
         const itemTotal = item.qty * unitPrice;
 
+        // For refunds, show negative values
+        const displayUnitPrice = isRefund ? -Math.abs(unitPrice) : unitPrice;
+        const displayItemTotal = isRefund ? -Math.abs(itemTotal) : itemTotal;
+
         if (item.qty > 1) {
-            leftRightText(`${item.qty} × ${unitPrice.toFixed(2)} CZK`, "");
+            leftRightText(`${item.qty} × ${displayUnitPrice.toFixed(2)} CZK`, "");
         }
 
         // Total price right aligned
-        doc.text(`${itemTotal.toFixed(2)} CZK`, { align: "right" });
+        doc.text(`${displayItemTotal.toFixed(2)} CZK`, { align: "right" });
         doc.moveDown(0.2);
     });
 
@@ -169,13 +183,15 @@ function generateReceiptPDF(order) {
 
     // Subtotal
     if (order.subtotal && order.subtotal !== order.totalCZK) {
-        leftRightText("Subtotal:", `${order.subtotal.toFixed(2)} CZK`);
+        const displaySubtotal = isRefund ? -Math.abs(order.subtotal) : order.subtotal;
+        leftRightText("Subtotal:", `${displaySubtotal.toFixed(2)} CZK`);
     }
 
     // Taxes
     if (order.vat && order.vat.length > 0) {
         order.vat.forEach((vatItem) => {
-            leftRightText(`Tax ${vatItem.rate}%:`, `${vatItem.amount.toFixed(2)} CZK`);
+            const displayVatAmount = isRefund ? -Math.abs(vatItem.amount) : vatItem.amount;
+            leftRightText(`Tax ${vatItem.rate}%:`, `${displayVatAmount.toFixed(2)} CZK`);
         });
     }
 
@@ -187,13 +203,16 @@ function generateReceiptPDF(order) {
     doc.moveDown(0.3);
 
     // === TOTAL ===
-    leftRightTextWithCurrency("TOTAL:", order.totalCZK.toFixed(2), "CZK", 15, "Bebas Neue");
+    // For refunds, show as negative or positive refund amount
+    const displayTotal = isRefund ? -Math.abs(order.totalCZK) : order.totalCZK;
+    leftRightTextWithCurrency("TOTAL:", displayTotal.toFixed(2), "CZK", 15, "Bebas Neue");
 
 
     // EUR equivalent
     if (order.totalEUR) {
         doc.fontSize(12).font("Bebas Neue");
-        doc.text(`= ${order.totalEUR.toFixed(2)} EUR`, { align: "right" });
+        const displayTotalEUR = isRefund ? -Math.abs(order.totalEUR) : order.totalEUR;
+        doc.text(`= ${displayTotalEUR.toFixed(2)} EUR`, { align: "right" });
     }
 
 
@@ -207,17 +226,24 @@ function generateReceiptPDF(order) {
     // === PAYMENT ===
     doc.fontSize(15).font("Bebas Neue");
 
-    // Payment method
-    const paymentMethod = order.paymentMethod === "Card" || order.paymentMethod === "Card - Contactless"
-        ? "Card - Contactless"
-        : order.paymentMethod || "Card - Contactless";
+    if (isRefund) {
+        // For refunds, show "Refunded amount" instead of payment
+        const paymentMethod = order.paymentMethod || "Card";
+        leftRightText(paymentMethod + ":", `${displayTotal.toFixed(2)} CZK`);
+        leftRightText("Refunded amount:", `${displayTotal.toFixed(2)} CZK`);
+    } else {
+        // Normal payment
+        const paymentMethod = order.paymentMethod === "Card" || order.paymentMethod === "Card - Contactless"
+            ? "Card - Contactless"
+            : order.paymentMethod || "Card - Contactless";
 
-    leftRightText(paymentMethod + ":", `${order.totalCZK.toFixed(2)} CZK`);
-    leftRightText("Paid amount:", `${order.totalCZK.toFixed(2)} CZK`);
+        leftRightText(paymentMethod + ":", `${order.totalCZK.toFixed(2)} CZK`);
+        leftRightText("Paid amount:", `${order.totalCZK.toFixed(2)} CZK`);
 
-    // Change
-    if (order.change && order.change > 0) {
-        leftRightText("Change:", `${order.change.toFixed(2)} CZK`);
+        // Change
+        if (order.change && order.change > 0) {
+            leftRightText("Change:", `${order.change.toFixed(2)} CZK`);
+        }
     }
 
     doc.moveDown(1);
