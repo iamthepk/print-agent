@@ -183,6 +183,58 @@ app.get('/', (req, res) => {
             </div>
 
             <div class="endpoint">
+                <h2>🧪 Test - Vytisknout oba templaty</h2>
+                <code>POST /test-print-both-templates</code>
+                <p>Vytiskne oba templaty (starý a nový) za sebou pro porovnání.</p>
+                <p>Nejprve se vytiskne <strong>starý template</strong>, pak počká 3 sekundy a vytiskne se <strong>nový template</strong>.</p>
+                <button onclick="testBothTemplates()" style="background: #9b59b6; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 10px 0;">
+                    🧪 Vytisknout oba templaty pro porovnání
+                </button>
+                <div id="test-templates-result" style="margin-top: 10px; padding: 10px; border-radius: 5px; display: none;"></div>
+                <script>
+                    async function testBothTemplates() {
+                        const button = event.target;
+                        const resultDiv = document.getElementById('test-templates-result');
+                        
+                        button.disabled = true;
+                        button.textContent = '⏳ Tisknu...';
+                        resultDiv.style.display = 'block';
+                        resultDiv.innerHTML = '⏳ Tisknu oba templaty (starý pak nový)...';
+                        
+                        try {
+                            const response = await fetch('/test-print-both-templates', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({})
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.status === 'ok') {
+                                resultDiv.style.background = '#d4edda';
+                                resultDiv.style.color = '#155724';
+                                resultDiv.style.border = '1px solid #c3e6cb';
+                                resultDiv.innerHTML = '✅ ' + data.message;
+                            } else {
+                                resultDiv.style.background = '#f8d7da';
+                                resultDiv.style.color = '#721c24';
+                                resultDiv.style.border = '1px solid #f5c6cb';
+                                resultDiv.innerHTML = '❌ ' + data.message;
+                            }
+                        } catch (error) {
+                            resultDiv.style.background = '#f8d7da';
+                            resultDiv.style.color = '#721c24';
+                            resultDiv.style.border = '1px solid #f5c6cb';
+                            resultDiv.innerHTML = '❌ Chyba: ' + error.message;
+                        }
+                        
+                        button.disabled = false;
+                        button.textContent = '🧪 Vytisknout oba templaty pro porovnání';
+                    }
+                </script>
+            </div>
+
+            <div class="endpoint">
                 <h2>💓 Healthcheck</h2>
                 <code>GET /healthcheck</code>
                 <p>Vrací: <code>{"status": "ok"}</code></p>
@@ -223,6 +275,76 @@ app.post('/print-sticker', async (req, res) => {
 
 app.get('/healthcheck', (req, res) => {
     res.json({ status: 'ok' })
+})
+
+// Testovací endpoint pro vytisknutí obou templatů pro porovnání
+app.post('/test-print-both-templates', async (req, res) => {
+    try {
+        // Testovací data účtenky
+        const testReceipt = {
+            orderNumber: "999",
+            receiptNumber: "TEST-001",
+            createdAt: new Date().toLocaleString('cs-CZ'),
+            customerName: "Test Customer",
+            items: [
+                { qty: 2, name: "Cappuccino", price: 75 },
+                { qty: 1, name: "Brownie", price: 45 }
+            ],
+            subtotal: 195.0,
+            vat: [{ rate: 21, amount: 33.77 }],
+            totalCZK: 175.50,
+            paymentMethod: "Hotovost",
+            givenAmount: 200.0,
+            change: 24.50,
+            // Přidáme company_info pole pro nový template
+            headerText: "LOOTEA s.r.o.",
+            companyPhone: "+420 123 456 789",
+            footerText: "Wenceslas Square 1\nPraha 1 11000\nIČO: 12345678\nDIČ: CZ12345678\ninfo@lootea.cz\nhttps://www.lootea.cz",
+            logoUrl: req.body.logoUrl, // Volitelně z requestu
+            qrCodeUrl: req.body.qrCodeUrl // Volitelně z requestu
+        };
+
+        console.log('🖨️ Tisknu STARÝ template...');
+        
+        // 1. Starý template (bez useNewTemplate)
+        const receiptOld = { ...testReceipt };
+        delete receiptOld.useNewTemplate; // Ujistíme se, že není nastaveno
+        try {
+            await printReceipt(receiptOld);
+            console.log('✅ Starý template vytištěn úspěšně');
+        } catch (error) {
+            console.error('❌ Chyba při tisku starého templatu:', error);
+            throw error;
+        }
+        
+        // Počkáme 3 sekundy mezi oběma účtenkami
+        console.log('⏳ Čekám 3 sekundy před tiskem nového templatu...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        console.log('🖨️ Tisknu NOVÝ template...');
+        
+        // 2. Nový template (s useNewTemplate: true)
+        const receiptNew = { ...testReceipt, useNewTemplate: true };
+        try {
+            await printReceipt(receiptNew);
+            console.log('✅ Nový template vytištěn úspěšně');
+        } catch (error) {
+            console.error('❌ Chyba při tisku nového templatu:', error);
+            throw error;
+        }
+
+        res.json({ 
+            status: 'ok', 
+            message: 'Oba templaty byly vytisknuty. Starý template vytištěn první, nový template za 3 sekundy.',
+            printed: {
+                oldTemplate: 'vytištěno',
+                newTemplate: 'vytištěno'
+            }
+        });
+    } catch (e) {
+        console.error('❌ Chyba při testovacím tisku:', e.message);
+        res.status(500).json({ status: 'error', message: e.message });
+    }
 })
 
 // Endpoint pro kontrolu dostupnosti tiskárny
