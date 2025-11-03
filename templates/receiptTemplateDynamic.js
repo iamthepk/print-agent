@@ -535,8 +535,8 @@ async function generateReceiptPDF(order) {
                 const qrTextBelow = getRawValue(order, 'qr_text_below') || getRawValue(order, 'qrTextBelow');
 
                 if (qrTextBelow && isNotPlaceholder(qrTextBelow)) {
-                    doc.moveDown(0.5);
-                    doc.fontSize(18).font("Bebas Neue");
+                    doc.moveDown(0.3);
+                    doc.fontSize(11).font("Bebas Neue");
                     centerText(qrTextBelow, 18);
                 }
             } catch (error) {
