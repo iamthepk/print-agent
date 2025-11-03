@@ -195,20 +195,30 @@ app.get('/', (req, res) => {
                         button.textContent = '⏳ Kontroluji...';
                         resultDiv.style.display = 'block';
                         resultDiv.className = 'result';
-                        resultDiv.innerHTML = '⏳ Kontroluji dostupnost tiskárny...';
+                        resultDiv.innerHTML = '⏳ Kontroluji dostupnost tiskáren...';
                         
                         try {
                             const response = await fetch('/check-printer');
                             const data = await response.json();
                             
                             if (data.status === 'ok') {
-                                if (data.available) {
+                                let html = '';
+                                if (data.allAvailable) {
                                     resultDiv.className = 'result success';
-                                    resultDiv.innerHTML = '✅ ' + data.message + '<br><small>Tiskárna: ' + data.printer + '</small>';
+                                    html = '✅ ' + data.message + '<br><br>';
                                 } else {
-                                    resultDiv.className = 'result warning';
-                                    resultDiv.innerHTML = '⚠️ ' + data.message + '<br><small>Tiskárna: ' + (data.printer || 'N/A') + '</small>';
+                                    resultDiv.className = data.anyAvailable ? 'result warning' : 'result error';
+                                    html = (data.anyAvailable ? '⚠️ ' : '❌ ') + data.message + '<br><br>';
                                 }
+                                
+                                html += '<small>';
+                                html += '<strong>Tiskárna účtenek:</strong> ' + data.receiptPrinter.name + '<br>';
+                                html += '&nbsp;&nbsp;→ ' + data.receiptPrinter.message + '<br><br>';
+                                html += '<strong>Tiskárna štítků:</strong> ' + data.stickerPrinter.name + '<br>';
+                                html += '&nbsp;&nbsp;→ ' + data.stickerPrinter.message;
+                                html += '</small>';
+                                
+                                resultDiv.innerHTML = html;
                             } else {
                                 resultDiv.className = 'result error';
                                 resultDiv.innerHTML = '❌ ' + data.message;
@@ -344,47 +354,74 @@ app.get('/healthcheck', (req, res) => {
     res.json({ status: 'ok' })
 })
 
-// Endpoint pro kontrolu dostupnosti tiskárny
+// Endpoint pro kontrolu dostupnosti tiskáren
 app.get('/check-printer', async (req, res) => {
     try {
         const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execAsync = promisify(exec);
 
-        // Zkontrolujeme dostupnost tiskárny pomocí wmic
-        const command = `wmic printer where "name='${RECEIPT_PRINTER}'" get name,workoffline,status`;
+        // Zkontrolujeme dostupnost obou tiskáren
+        const checkPrinter = async (printerName) => {
+            const command = `wmic printer where "name='${printerName}'" get name,workoffline,status`;
+            try {
+                const { stdout } = await execAsync(command, { windowsHide: true });
+                const output = stdout.toLowerCase();
+                const printerFound = output.includes(printerName.toLowerCase());
+                const isOffline = output.includes('workoffline') && output.includes('true');
+                const hasUnknownStatus = output.includes('unknown');
+                const isAvailable = printerFound && !isOffline;
 
-        exec(command, { windowsHide: true }, (error, stdout, stderr) => {
-            if (error) {
-                console.error('❌ Chyba při kontrole tiskárny:', error);
-                res.status(500).json({
-                    status: 'error',
-                    message: 'Nepodařilo se zkontrolovat tiskárnu',
-                    error: error.message
-                });
-                return;
+                return {
+                    name: printerName,
+                    found: printerFound,
+                    available: isAvailable,
+                    offline: isOffline,
+                    unknownStatus: hasUnknownStatus,
+                    message: isAvailable ? 'Tiskárna je dostupná' :
+                        isOffline ? 'Tiskárna je offline' :
+                            hasUnknownStatus ? 'Tiskárna je dostupná (status: Unknown)' :
+                                'Tiskárna není nalezena'
+                };
+            } catch (error) {
+                return {
+                    name: printerName,
+                    found: false,
+                    available: false,
+                    offline: false,
+                    unknownStatus: false,
+                    message: 'Chyba při kontrole tiskárny: ' + error.message
+                };
             }
+        };
 
-            // Vylepšená logika pro kontrolu dostupnosti
-            const output = stdout.toLowerCase();
-            const printerFound = output.includes(RECEIPT_PRINTER.toLowerCase());
-            const isOffline = output.includes('workoffline') && output.includes('true');
-            const hasUnknownStatus = output.includes('unknown');
+        // Zkontrolujeme obě tiskárny paralelně
+        const [receiptPrinter, stickerPrinter] = await Promise.all([
+            checkPrinter(RECEIPT_PRINTER),
+            checkPrinter(STICKER_PRINTER)
+        ]);
 
-            // Tiskárna je dostupná pokud:
-            // 1. Je nalezena v seznamu
-            // 2. Není explicitně offline
-            // 3. Status "Unknown" není problém (tiskárna může fungovat i s Unknown statusem)
-            const isAvailable = printerFound && !isOffline;
+        const allAvailable = receiptPrinter.available && stickerPrinter.available;
+        const anyAvailable = receiptPrinter.available || stickerPrinter.available;
 
-            res.json({
-                status: 'ok',
-                printer: RECEIPT_PRINTER,
-                available: isAvailable,
-                details: stdout.trim(),
-                message: isAvailable ? 'Tiskárna je dostupná' :
-                    isOffline ? 'Tiskárna je offline' :
-                        hasUnknownStatus ? 'Tiskárna je dostupná (status: Unknown)' :
-                            'Tiskárna není nalezena'
-            });
+        let message = '';
+        if (allAvailable) {
+            message = 'Všechny tiskárny jsou dostupné';
+        } else if (receiptPrinter.available && !stickerPrinter.available) {
+            message = `Tiskárna účtenek je dostupná, tiskárna štítků: ${stickerPrinter.message}`;
+        } else if (!receiptPrinter.available && stickerPrinter.available) {
+            message = `Tiskárna účtenek: ${receiptPrinter.message}, tiskárna štítků je dostupná`;
+        } else {
+            message = `Tiskárna účtenek: ${receiptPrinter.message}, tiskárna štítků: ${stickerPrinter.message}`;
+        }
+
+        res.json({
+            status: 'ok',
+            allAvailable: allAvailable,
+            anyAvailable: anyAvailable,
+            receiptPrinter: receiptPrinter,
+            stickerPrinter: stickerPrinter,
+            message: message
         });
     } catch (e) {
         console.error('❌ Chyba při kontrole tiskárny:', e.message);
