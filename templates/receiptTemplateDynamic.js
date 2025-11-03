@@ -480,9 +480,9 @@ async function generateReceiptPDF(order) {
 
         console.log('🔍 QR Code:', { hasBuffer: !!qrCodeBuffer, qrPlaceholder: qrPlaceholderValue, companyGoogleReviewsQrCode });
 
-        // Text "Review us ♥" vždy zobrazíme nad QR kódem nebo placeholderem
+
         doc.fontSize(11).font("Bebas Neue");
-        centerText("Review us <3>", 18);
+        centerText("We appreciate your feedback", 18);
         doc.moveDown(0.3);
 
         if (qrCodeBuffer) {
