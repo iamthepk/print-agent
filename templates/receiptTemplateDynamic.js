@@ -282,7 +282,6 @@ async function generateReceiptPDF(order) {
 
 
             doc.text(orderText, 10, doc.y, { width: maxWidth, align: "right" });
-            doc.moveDown(0.5);
         }
 
         // === LOGO ===
