@@ -94,10 +94,39 @@ function formatDate(dateString) {
         if (datePart.includes('-')) {
             const dateParts = datePart.split('-');
             if (dateParts.length === 3) {
-                const year = dateParts[0];
-                const month = dateParts[1].padStart(2, '0');
-                const day = dateParts[2].padStart(2, '0');
-                formattedDate = `${day}-${month}-${year}`;
+                // Detekce formátu:
+                // - Pokud první část má 4 znaky, je to YYYY-MM-DD (ISO)
+                // - Pokud třetí část má 4 znaky a první část je <= 31, je to dd-mm-yyyy
+                // - Pokud první část > 12, je to pravděpodobně YYYY-MM-DD
+                const firstPart = parseInt(dateParts[0], 10);
+                const secondPart = parseInt(dateParts[1], 10);
+                const thirdPart = dateParts[2];
+
+                if (dateParts[0].length === 4) {
+                    // Formát YYYY-MM-DD (ISO) - převedeme na dd-mm-yyyy
+                    const year = dateParts[0];
+                    const month = dateParts[1].padStart(2, '0');
+                    const day = dateParts[2].padStart(2, '0');
+                    formattedDate = `${day}-${month}-${year}`;
+                } else if (thirdPart.length === 4 && firstPart <= 31 && secondPart <= 12) {
+                    // Formát dd-mm-yyyy - už je ve správném formátu, jen zajistíme padding
+                    const day = dateParts[0].padStart(2, '0');
+                    const month = dateParts[1].padStart(2, '0');
+                    const year = dateParts[2];
+                    formattedDate = `${day}-${month}-${year}`;
+                } else if (firstPart > 12) {
+                    // První část je větší než 12, pravděpodobně YYYY-MM-DD
+                    const year = dateParts[0];
+                    const month = dateParts[1].padStart(2, '0');
+                    const day = dateParts[2].padStart(2, '0');
+                    formattedDate = `${day}-${month}-${year}`;
+                } else {
+                    // Fallback - zkusíme jako dd-mm-yyyy
+                    const day = dateParts[0].padStart(2, '0');
+                    const month = dateParts[1].padStart(2, '0');
+                    const year = dateParts[2];
+                    formattedDate = `${day}-${month}-${year}`;
+                }
             }
         } else if (datePart.includes('/')) {
             const dateParts = datePart.split('/');
@@ -273,7 +302,7 @@ async function generateReceiptPDF(order) {
                 doc.y = logoStartY + logoHeight + 8;
                 hasLogoImage = true;
                 console.log('✅ Logo z company_logo vykresleno');
-                doc.moveDown(1.5);
+                doc.moveDown(0.2);
             } catch (error) {
                 console.error('❌ Chyba při vykreslování loga z bufferu:', error.message);
                 hasLogoImage = false;
