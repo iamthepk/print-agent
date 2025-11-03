@@ -3,10 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-// Dynamický template je výchozí - používá se pro všechny nové účtenky
-import { generateReceiptPDF as generateReceiptPDFDynamic } from '../templates/receiptTemplateDynamic.js';
-// Starý template je záloha - použije se pouze pokud useDynamicTemplate === false (legacy support)
-import { generateReceiptPDF as generateReceiptPDFBackup } from '../templates/OLDreceiptTemplate.js';
+import { generateReceiptPDF } from '../templates/receiptTemplateDynamic.js';
 
 dotenv.config();
 
@@ -17,41 +14,19 @@ const SUMATRA_PATH = process.env.SUMATRA_PATH || `"C:\\Users\\team\\AppData\\Loc
 /**
  * 🖨️ Vytiskne účtenku jako PDF přes SumatraPDF
  * @param {Object} order - Data účtenky
- * @param {boolean} order.useDynamicTemplate - Výchozí: true (dynamický template). Pokud false, použije starý template (záloha/legacy)
  */
 async function printReceipt(order) {
     try {
-        // Dynamický template je výchozí - použije se pokud useDynamicTemplate není explicitně false
-        // Starý template se použije pouze pokud useDynamicTemplate === false (pro zálohu/legacy)
-        const useDynamicTemplate = order.useDynamicTemplate !== false && order.useDynamicTemplate !== "false";
-
-        let generatePDF;
-        if (useDynamicTemplate) {
-            console.log('✅ POUŽÍVÁM DYNAMICKÝ TEMPLATE (výchozí)');
-            generatePDF = generateReceiptPDFDynamic;
-        } else {
-            console.log('⚠️ POUŽÍVÁM STARÝ TEMPLATE (záloha/legacy)');
-            generatePDF = generateReceiptPDFBackup;
-        }
-
-        const templateType = useDynamicTemplate ? 'DYNAMICKÝ (výchozí)' : 'STARÝ (záloha)';
         console.log(`📄 ============================================`);
-        console.log(`📄 Používám ${templateType} template pro účtenku`);
+        console.log(`📄 Používám dynamický template pro účtenku`);
         console.log(`📄 Receipt Number: ${order.receiptNumber || 'N/A'}`);
-        console.log(`📄 useDynamicTemplate hodnota: ${order.useDynamicTemplate}`);
-        console.log(`📄 generatePDF funkce: ${generatePDF.name || 'anonymní'}`);
-        if (useDynamicTemplate) {
-            console.log(`📄 ✅ DYNAMICKÝ TEMPLATE - všechny hodnoty z POS aplikace`);
-            console.log(`📄 company_name: ${order.company_name || 'NENÍ (zobrazí se <company_name>)'}`);
-            console.log(`📄 company_phone: ${order.company_phone || 'NENÍ (zobrazí se <company_phone>)'}`);
-            console.log(`📄 company_address: ${order.company_address || 'NENÍ (zobrazí se <company_address>)'}`);
-        } else {
-            console.log(`📄 ⚠️ STARÝ TEMPLATE - používá hardcodované hodnoty (legacy/záloha)`);
-        }
+        console.log(`📄 company_name: ${order.company_name || 'NENÍ'}`);
+        console.log(`📄 company_phone: ${order.company_phone || 'NENÍ'}`);
+        console.log(`📄 company_address: ${order.company_address || 'NENÍ'}`);
         console.log(`📄 ============================================`);
 
         // Počkáme na vygenerování PDF
-        const pdfPath = await generatePDF(order);
+        const pdfPath = await generateReceiptPDF(order);
         console.log(`📄 PDF vygenerováno: ${pdfPath}`);
 
         // Počkáme 500ms pro jistotu, že je PDF plně zapsáno

@@ -1,14 +1,22 @@
 import dotenv from 'dotenv'
 import express from 'express'
 import cors from 'cors'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
 import { printReceipt } from './print/printReceipt.js'
 import { printSticker } from './print/printSticker.js'
+import fs from 'fs'
 
 dotenv.config()
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 const app = express()
 app.use(cors())
 app.use(express.json())
+app.use('/assets', express.static(path.join(__dirname, 'assets')))
 
 // Automatická detekce výchozí tiskárny pokud není nastavena
 const RECEIPT_PRINTER = process.env.RECEIPT_PRINTER || 'EPSON TM-T20III Receipt'
@@ -19,93 +27,140 @@ console.log('🏷️ STICKER_PRINTER:', STICKER_PRINTER)
 
 // Přidání základní HTML stránky
 app.get('/', (req, res) => {
-    res.send(`
+    const logoPath = '/assets/logo.png'
+    const html = `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Print Agent API</title>
+            <title>Print Agent</title>
             <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
                 body {
                     font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 20px auto;
-                    padding: 0 20px;
-                    line-height: 1.6;
-                }
-                pre {
                     background: #f5f5f5;
-                    padding: 15px;
-                    border-radius: 5px;
-                    overflow-x: auto;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    padding: 20px;
                 }
-                .endpoint {
+                .container {
+                    background: white;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    padding: 40px;
+                    max-width: 600px;
+                    width: 100%;
+                    text-align: center;
+                }
+                .logo {
+                    max-width: 400px;
+                    width: 100%;
+                    height: auto;
+                    margin: 0 auto 20px;
+                    display: block;
+                }
+                .title {
+                    font-size: 24px;
+                    font-weight: bold;
+                    color: #2c3e50;
+                    margin-bottom: 40px;
+                    letter-spacing: 2px;
+                }
+                .buttons {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 15px;
                     margin-bottom: 30px;
                 }
-                h1 { color: #2c3e50; }
-                h2 { color: #34495e; }
-                code { background: #f8f9fa; padding: 2px 5px; border-radius: 3px; }
+                button {
+                    background: #2c3e50;
+                    color: white;
+                    border: none;
+                    padding: 15px 30px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    font-size: 16px;
+                    transition: background 0.3s;
+                }
+                button:hover:not(:disabled) {
+                    background: #34495e;
+                }
+                button:disabled {
+                    background: #95a5a6;
+                    cursor: not-allowed;
+                }
+                .result {
+                    margin-top: 20px;
+                    padding: 15px;
+                    border-radius: 5px;
+                    display: none;
+                }
+                .result.success {
+                    background: #d4edda;
+                    color: #155724;
+                    border: 1px solid #c3e6cb;
+                }
+                .result.error {
+                    background: #f8d7da;
+                    color: #721c24;
+                    border: 1px solid #f5c6cb;
+                }
+                .result.warning {
+                    background: #fff3cd;
+                    color: #856404;
+                    border: 1px solid #ffeaa7;
+                }
+                .printers-info {
+                    margin-top: 30px;
+                    padding: 20px;
+                    background: #f8f9fa;
+                    border-radius: 5px;
+                    text-align: left;
+                }
+                .printers-info h3 {
+                    margin-bottom: 10px;
+                    color: #2c3e50;
+                }
+                .printers-info p {
+                    margin: 5px 0;
+                    color: #666;
+                }
             </style>
         </head>
         <body>
-            <h1>🖨️ Print Agent API</h1>
-            <p>Lokální tiskový agent pro tisk účtenek a štítků.</p>
-            
-            <div class="endpoint">
-                <h2>📝 Tisk účtenky</h2>
-                <code>POST /print-receipt</code>
-                <pre>
-{
-  "receiptNo": "123",
-  "createdAt": "2024-03-18 12:34",
-  "items": [
-    {
-      "qty": 1,
-      "name": "Brown Sugar Milk Tea",
-      "price": 89
-    }
-  ],
-  "totalCZK": 89,
-  "totalEUR": 3.50,
-  "exchangeRate": "25.4 CZK/EUR",
-  "paymentMethod": "Hotovost"
-}</pre>
-            </div>
-
-            <div class="endpoint">
-                <h2>🏷️ Tisk štítku</h2>
-                <code>POST /print-sticker</code>
-                <pre>
-{
-  "pcs": "1",
-  "name": "Brown Sugar 700ml",
-  "order": "123",
-  "round": "1",
-  "sweetness": "less sweet",
-  "ice": "less ice",
-  "message": "Smile, You are beautiful!",
-  "toppings": ["Blueberry", "Peach"]
-}</pre>
-            </div>
-
-            <div class="endpoint">
-                <h2>💰 Otevření pokladní zásuvky</h2>
-                <code>POST /open-drawer</code>
-                <p>Otevře pokladní zásuvku pomocí ESC/POS příkazu.</p>
-                <button onclick="testDrawer()" style="background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 10px 5px 10px 0;">
-                    🧪 Testovat pokladní zásuvku
-                </button>
-                <button onclick="checkPrinter()" style="background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 10px 0;">
-                    🔍 Zkontrolovat tiskárnu
-                </button>
-                <div id="drawer-result" style="margin-top: 10px; padding: 10px; border-radius: 5px; display: none;"></div>
+            <div class="container">
+                <img src="${logoPath}" alt="LOOTEA Logo" class="logo" onerror="this.style.display='none';">
+                <div class="title">PRINT AGENT</div>
+                
+                <div class="buttons">
+                    <button onclick="testDrawer(event)">🧪 Testovat pokladní zásuvku</button>
+                    <button onclick="checkPrinter(event)">🔍 Zkontrolovat tiskárnu</button>
+                    <button onclick="showPrinters(event)">📋 Zobrazit nastavené tiskárny</button>
+                    <button onclick="restartServer(event)">🔄 Restartovat server</button>
+                </div>
+                
+                <div id="result" class="result"></div>
+                
+                <div class="printers-info" id="printers-info" style="display: none;">
+                    <h3>Nastavené tiskárny:</h3>
+                    <p><strong>Účtenky:</strong> ${RECEIPT_PRINTER}</p>
+                    <p><strong>Štítky:</strong> ${STICKER_PRINTER}</p>
+                </div>
+                
                 <script>
-                    async function testDrawer() {
+                    async function testDrawer(event) {
                         const button = event.target;
-                        const resultDiv = document.getElementById('drawer-result');
+                        const resultDiv = document.getElementById('result');
                         
                         button.disabled = true;
                         button.textContent = '⏳ Testuji...';
                         resultDiv.style.display = 'block';
+                        resultDiv.className = 'result';
                         resultDiv.innerHTML = '⏳ Otevírám pokladní zásuvku...';
                         
                         try {
@@ -117,20 +172,14 @@ app.get('/', (req, res) => {
                             const data = await response.json();
                             
                             if (data.status === 'ok') {
-                                resultDiv.style.background = '#d4edda';
-                                resultDiv.style.color = '#155724';
-                                resultDiv.style.border = '1px solid #c3e6cb';
-                                resultDiv.innerHTML = '✅ ' + data.message + '<br><small>Použitá tiskárna: ' + data.details.printer + '</small>';
+                                resultDiv.className = 'result success';
+                                resultDiv.innerHTML = '✅ ' + data.message + '<br><small>Použitá tiskárna: ' + (data.details?.printer || 'N/A') + '</small>';
                             } else {
-                                resultDiv.style.background = '#f8d7da';
-                                resultDiv.style.color = '#721c24';
-                                resultDiv.style.border = '1px solid #f5c6cb';
+                                resultDiv.className = 'result error';
                                 resultDiv.innerHTML = '❌ ' + data.message + '<br><small>Chyba: ' + (data.details?.error || 'Neznámá chyba') + '</small>';
                             }
                         } catch (error) {
-                            resultDiv.style.background = '#f8d7da';
-                            resultDiv.style.color = '#721c24';
-                            resultDiv.style.border = '1px solid #f5c6cb';
+                            resultDiv.className = 'result error';
                             resultDiv.innerHTML = '❌ Chyba při komunikaci se serverem: ' + error.message;
                         }
                         
@@ -138,13 +187,14 @@ app.get('/', (req, res) => {
                         button.textContent = '🧪 Testovat pokladní zásuvku';
                     }
                     
-                    async function checkPrinter() {
+                    async function checkPrinter(event) {
                         const button = event.target;
-                        const resultDiv = document.getElementById('drawer-result');
+                        const resultDiv = document.getElementById('result');
                         
                         button.disabled = true;
                         button.textContent = '⏳ Kontroluji...';
                         resultDiv.style.display = 'block';
+                        resultDiv.className = 'result';
                         resultDiv.innerHTML = '⏳ Kontroluji dostupnost tiskárny...';
                         
                         try {
@@ -153,103 +203,120 @@ app.get('/', (req, res) => {
                             
                             if (data.status === 'ok') {
                                 if (data.available) {
-                                    resultDiv.style.background = '#d4edda';
-                                    resultDiv.style.color = '#155724';
-                                    resultDiv.style.border = '1px solid #c3e6cb';
+                                    resultDiv.className = 'result success';
                                     resultDiv.innerHTML = '✅ ' + data.message + '<br><small>Tiskárna: ' + data.printer + '</small>';
                                 } else {
-                                    resultDiv.style.background = '#fff3cd';
-                                    resultDiv.style.color = '#856404';
-                                    resultDiv.style.border = '1px solid #ffeaa7';
-                                    resultDiv.innerHTML = '⚠️ ' + data.message + '<br><small>Tiskárna: ' + data.printer + '</small>';
+                                    resultDiv.className = 'result warning';
+                                    resultDiv.innerHTML = '⚠️ ' + data.message + '<br><small>Tiskárna: ' + (data.printer || 'N/A') + '</small>';
                                 }
                             } else {
-                                resultDiv.style.background = '#f8d7da';
-                                resultDiv.style.color = '#721c24';
-                                resultDiv.style.border = '1px solid #f5c6cb';
+                                resultDiv.className = 'result error';
                                 resultDiv.innerHTML = '❌ ' + data.message;
                             }
                         } catch (error) {
-                            resultDiv.style.background = '#f8d7da';
-                            resultDiv.style.color = '#721c24';
-                            resultDiv.style.border = '1px solid #f5c6cb';
+                            resultDiv.className = 'result error';
                             resultDiv.innerHTML = '❌ Chyba při komunikaci se serverem: ' + error.message;
                         }
                         
                         button.disabled = false;
                         button.textContent = '🔍 Zkontrolovat tiskárnu';
                     }
-                </script>
-            </div>
-
-            <div class="endpoint">
-                <h2>🧪 Test - Vytisknout oba templaty</h2>
-                <code>POST /test-print-both-templates</code>
-                <p>Vytiskne oba templaty (starý a nový) za sebou pro porovnání.</p>
-                <p>Nejprve se vytiskne <strong>starý template</strong>, pak počká 3 sekundy a vytiskne se <strong>nový template</strong>.</p>
-                <button onclick="testBothTemplates()" style="background: #9b59b6; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 10px 0;">
-                    🧪 Vytisknout oba templaty pro porovnání
-                </button>
-                <div id="test-templates-result" style="margin-top: 10px; padding: 10px; border-radius: 5px; display: none;"></div>
-                <script>
-                    async function testBothTemplates() {
+                    
+                    function showPrinters(event) {
+                        event.preventDefault();
+                        const printersInfo = document.getElementById('printers-info');
+                        printersInfo.style.display = printersInfo.style.display === 'none' ? 'block' : 'none';
+                    }
+                    
+                    async function restartServer(event) {
                         const button = event.target;
-                        const resultDiv = document.getElementById('test-templates-result');
+                        const resultDiv = document.getElementById('result');
+                        
+                        if (!confirm('Opravdu chcete restartovat server?\\n\\nServer se ukončí a automaticky restartuje během několika sekund.')) {
+                            return;
+                        }
                         
                         button.disabled = true;
-                        button.textContent = '⏳ Tisknu...';
+                        button.textContent = '⏳ Restartuji...';
                         resultDiv.style.display = 'block';
-                        resultDiv.innerHTML = '⏳ Tisknu oba templaty (starý pak nový)...';
+                        resultDiv.className = 'result warning';
+                        resultDiv.innerHTML = '⏳ Restartuji server...<br><small>Prosím počkejte 5-10 sekund. Stránka se automaticky obnoví.</small>';
                         
                         try {
-                            const response = await fetch('/test-print-both-templates', {
+                            const response = await fetch('/restart-server', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({})
+                                headers: { 'Content-Type': 'application/json' }
                             });
                             
                             const data = await response.json();
                             
                             if (data.status === 'ok') {
-                                resultDiv.style.background = '#d4edda';
-                                resultDiv.style.color = '#155724';
-                                resultDiv.style.border = '1px solid #c3e6cb';
-                                resultDiv.innerHTML = '✅ ' + data.message;
+                                resultDiv.className = 'result success';
+                                resultDiv.innerHTML = '✅ ' + data.message + '<br><small>Server se restartuje... Počkejte a stránka se automaticky obnoví.</small>';
+                                
+                                // Zkusíme se znovu připojit po 5 sekundách
+                                let attempts = 0;
+                                const maxAttempts = 10;
+                                const checkInterval = setInterval(() => {
+                                    attempts++;
+                                    fetch('/healthcheck')
+                                        .then(res => res.json())
+                                        .then(data => {
+                                            if (data.status === 'ok') {
+                                                clearInterval(checkInterval);
+                                                window.location.reload();
+                                            }
+                                        })
+                                        .catch(() => {
+                                            if (attempts >= maxAttempts) {
+                                                clearInterval(checkInterval);
+                                                resultDiv.className = 'result warning';
+                                                resultDiv.innerHTML = '⚠️ Server se restartuje, ale připojení trvá déle. Zkuste obnovit stránku za chvíli manuálně.';
+                                            }
+                                        });
+                                }, 1000);
                             } else {
-                                resultDiv.style.background = '#f8d7da';
-                                resultDiv.style.color = '#721c24';
-                                resultDiv.style.border = '1px solid #f5c6cb';
+                                resultDiv.className = 'result error';
                                 resultDiv.innerHTML = '❌ ' + data.message;
+                                button.disabled = false;
+                                button.textContent = '🔄 Restartovat server';
                             }
                         } catch (error) {
-                            resultDiv.style.background = '#f8d7da';
-                            resultDiv.style.color = '#721c24';
-                            resultDiv.style.border = '1px solid #f5c6cb';
-                            resultDiv.innerHTML = '❌ Chyba: ' + error.message;
+                            // Pokud dostaneme chybu, je to pravděpodobně proto, že server se restartuje
+                            resultDiv.className = 'result warning';
+                            resultDiv.innerHTML = '⏳ Server se restartuje...<br><small>Prosím počkejte 5-10 sekund a obnovte stránku.</small>';
+                            
+                            // Zkusíme se znovu připojit po 5 sekundách
+                            setTimeout(() => {
+                                let attempts = 0;
+                                const maxAttempts = 10;
+                                const checkInterval = setInterval(() => {
+                                    attempts++;
+                                    fetch('/healthcheck')
+                                        .then(res => res.json())
+                                        .then(data => {
+                                            if (data.status === 'ok') {
+                                                clearInterval(checkInterval);
+                                                window.location.reload();
+                                            }
+                                        })
+                                        .catch(() => {
+                                            if (attempts >= maxAttempts) {
+                                                clearInterval(checkInterval);
+                                                resultDiv.className = 'result warning';
+                                                resultDiv.innerHTML = '⚠️ Server se restartuje, ale připojení trvá déle. Zkuste obnovit stránku za chvíli manuálně.';
+                                            }
+                                        });
+                                }, 1000);
+                            }, 5000);
                         }
-                        
-                        button.disabled = false;
-                        button.textContent = '🧪 Vytisknout oba templaty pro porovnání';
                     }
                 </script>
             </div>
-
-            <div class="endpoint">
-                <h2>💓 Healthcheck</h2>
-                <code>GET /healthcheck</code>
-                <p>Vrací: <code>{"status": "ok"}</code></p>
-            </div>
-
-            <footer style="margin-top: 50px; padding-top: 20px; border-top: 1px solid #eee; color: #666;">
-                <p>Tiskárny:</p>
-                <ul>
-                    <li>Účtenky: ${RECEIPT_PRINTER}</li>
-                    <li>Štítky: ${STICKER_PRINTER}</li>
-                </ul>
-            </footer>
         </body>
         </html>
-    `)
+    `
+    res.send(html)
 })
 
 app.post('/print-receipt', async (req, res) => {
@@ -275,76 +342,6 @@ app.post('/print-sticker', async (req, res) => {
 
 app.get('/healthcheck', (req, res) => {
     res.json({ status: 'ok' })
-})
-
-// Testovací endpoint pro vytisknutí obou templatů pro porovnání
-app.post('/test-print-both-templates', async (req, res) => {
-    try {
-        // Testovací data účtenky
-        const testReceipt = {
-            orderNumber: "999",
-            receiptNumber: "TEST-001",
-            createdAt: new Date().toLocaleString('cs-CZ'),
-            customerName: "Test Customer",
-            items: [
-                { qty: 2, name: "Cappuccino", price: 75 },
-                { qty: 1, name: "Brownie", price: 45 }
-            ],
-            subtotal: 195.0,
-            vat: [{ rate: 21, amount: 33.77 }],
-            totalCZK: 175.50,
-            paymentMethod: "Hotovost",
-            givenAmount: 200.0,
-            change: 24.50,
-            // Přidáme company_info pole pro nový template
-            headerText: "LOOTEA s.r.o.",
-            companyPhone: "+420 123 456 789",
-            footerText: "Wenceslas Square 1\nPraha 1 11000\nIČO: 12345678\nDIČ: CZ12345678\ninfo@lootea.cz\nhttps://www.lootea.cz",
-            logoUrl: req.body.logoUrl, // Volitelně z requestu
-            qrCodeUrl: req.body.qrCodeUrl // Volitelně z requestu
-        };
-
-        console.log('🖨️ Tisknu STARÝ template...');
-        
-        // 1. Starý template (bez useNewTemplate)
-        const receiptOld = { ...testReceipt };
-        delete receiptOld.useNewTemplate; // Ujistíme se, že není nastaveno
-        try {
-            await printReceipt(receiptOld);
-            console.log('✅ Starý template vytištěn úspěšně');
-        } catch (error) {
-            console.error('❌ Chyba při tisku starého templatu:', error);
-            throw error;
-        }
-        
-        // Počkáme 3 sekundy mezi oběma účtenkami
-        console.log('⏳ Čekám 3 sekundy před tiskem nového templatu...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        console.log('🖨️ Tisknu NOVÝ template...');
-        
-        // 2. Nový template (s useNewTemplate: true)
-        const receiptNew = { ...testReceipt, useNewTemplate: true };
-        try {
-            await printReceipt(receiptNew);
-            console.log('✅ Nový template vytištěn úspěšně');
-        } catch (error) {
-            console.error('❌ Chyba při tisku nového templatu:', error);
-            throw error;
-        }
-
-        res.json({ 
-            status: 'ok', 
-            message: 'Oba templaty byly vytisknuty. Starý template vytištěn první, nový template za 3 sekundy.',
-            printed: {
-                oldTemplate: 'vytištěno',
-                newTemplate: 'vytištěno'
-            }
-        });
-    } catch (e) {
-        console.error('❌ Chyba při testovacím tisku:', e.message);
-        res.status(500).json({ status: 'error', message: e.message });
-    }
 })
 
 // Endpoint pro kontrolu dostupnosti tiskárny
@@ -394,6 +391,44 @@ app.get('/check-printer', async (req, res) => {
         res.status(500).json({ status: 'error', message: e.message });
     }
 })
+
+// Endpoint pro restart serveru
+app.post('/restart-server', async (req, res) => {
+    try {
+        const { exec } = await import('child_process');
+        const path = await import('path');
+
+        res.json({
+            status: 'ok',
+            message: 'Server bude restartován...'
+        });
+
+        // Pošleme odpověď a pak spustíme restart script (SILENT)
+        setTimeout(() => {
+            console.log('🔄 Restartování serveru pomocí restart scriptu...');
+            const restartScript = path.join(__dirname, 'scripts', 'restart-server.bat');
+            const scriptPath = path.join(__dirname, '..');
+
+            // Spustíme script SILENT (bez zobrazení okna)
+            // /B = běh na pozadí, cmd /c = spustit a zavřít, > nul 2>&1 = potlačit výstup
+            exec(`cmd /c "${restartScript}"`, {
+                windowsHide: true,
+                cwd: scriptPath
+            }, (error) => {
+                if (error) {
+                    console.error('❌ Chyba při spouštění restart scriptu:', error);
+                }
+                // Ukončíme aktuální proces - restart script ho restartuje
+                setTimeout(() => {
+                    process.exit(0);
+                }, 500);
+            });
+        }, 500);
+    } catch (e) {
+        console.error('❌ Chyba při restartu serveru:', e.message);
+        res.status(500).json({ status: 'error', message: e.message });
+    }
+});
 
 // Endpoint pro otevření pokladní zásuvky
 app.post('/open-drawer', async (req, res) => {

@@ -31,7 +31,6 @@ async function downloadImageFromUrl(url) {
  */
 function getValue(order, key) {
     const value = order[key];
-    // Debug log
     if (key.startsWith('company_')) {
         console.log(`🔍 getValue(${key}):`, value === undefined ? 'undefined' : value === null ? 'null' : value === '' ? 'empty string' : value);
     }
@@ -45,118 +44,158 @@ function getValue(order, key) {
     return value;
 }
 
+/**
+ * Získá skutečnou hodnotu z order objektu (bez placeholderů)
+ * Pokud hodnota chybí, vrátí null
+ */
+function getRawValue(order, key) {
+    const value = order[key];
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
+    if (typeof value === 'string' && value.startsWith('<') && value.endsWith('>')) {
+        return null;
+    }
+    return value;
+}
+
+/**
+ * Zkontroluje, zda hodnota není placeholder
+ */
+function isNotPlaceholder(value) {
+    if (!value) return false;
+    if (typeof value === 'string' && value.startsWith('<') && value.endsWith('>')) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Formátuje datum a čas do formátu dd-mm-yyyy hh:mm:ss
+ * Podporuje různé vstupní formáty: "2025-11-03 15:38", "2025-11-03 15:38:45", "2025-11-03", atd.
+ */
+function formatDate(dateString) {
+    if (!dateString) return dateString;
+
+    try {
+        const parts = dateString.split(' ').filter(p => p.length > 0);
+        let datePart = parts[0].split('T')[0];
+        let timePart = null;
+
+        if (parts.length > 1) {
+            timePart = parts[1];
+        } else if (parts[0].includes('T')) {
+            const isoParts = parts[0].split('T');
+            datePart = isoParts[0];
+            timePart = isoParts[1];
+        }
+
+        let formattedDate = '';
+        if (datePart.includes('-')) {
+            const dateParts = datePart.split('-');
+            if (dateParts.length === 3) {
+                const year = dateParts[0];
+                const month = dateParts[1].padStart(2, '0');
+                const day = dateParts[2].padStart(2, '0');
+                formattedDate = `${day}-${month}-${year}`;
+            }
+        } else if (datePart.includes('/')) {
+            const dateParts = datePart.split('/');
+            if (dateParts.length === 3) {
+                if (dateParts[0].length === 4) {
+                    const year = dateParts[0];
+                    const month = dateParts[1].padStart(2, '0');
+                    const day = dateParts[2].padStart(2, '0');
+                    formattedDate = `${day}-${month}-${year}`;
+                } else {
+                    const month = dateParts[0].padStart(2, '0');
+                    const day = dateParts[1].padStart(2, '0');
+                    const year = dateParts[2];
+                    formattedDate = `${day}-${month}-${year}`;
+                }
+            }
+        }
+
+        if (!formattedDate) {
+            const date = new Date(datePart);
+            if (!isNaN(date.getTime())) {
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                formattedDate = `${day}-${month}-${year}`;
+            } else {
+                return dateString;
+            }
+        }
+
+        let formattedTime = '';
+        if (timePart) {
+            timePart = timePart.split('.')[0];
+            const timeParts = timePart.split(':');
+
+            if (timeParts.length >= 2) {
+                const hours = timeParts[0].padStart(2, '0');
+                const minutes = timeParts[1].padStart(2, '0');
+                const seconds = timeParts[2] ? timeParts[2].padStart(2, '0') : '00';
+                formattedTime = `${hours}:${minutes}:${seconds}`;
+            }
+        }
+        if (formattedTime) {
+            return `${formattedDate} ${formattedTime}`;
+        } else {
+            return formattedDate;
+        }
+    } catch (error) {
+        console.warn('⚠️ Chyba při formátování data:', error.message);
+    }
+
+    return dateString;
+}
+
 async function generateReceiptPDF(order) {
     console.log('🎯 DYNAMICKÝ TEMPLATE - Začínám generovat PDF');
     console.log('🎯 Order keys:', Object.keys(order).filter(k => k.startsWith('company_')));
     console.log('🎯 useDynamicTemplate:', order.useDynamicTemplate);
 
-    // Stáhneme obrázky před generováním PDF (pokud jsou URL nebo lokální soubory)
     let logoBuffer = null;
     let qrCodeBuffer = null;
 
-    // Placeholdery - pouze z POS aplikace, žádné fallbacky
-    const companyLogo = getValue(order, 'company_logo');
-    const companyGoogleReviewsQrCode = getValue(order, 'company_google_reviews_qr_code') || getValue(order, 'company_qr');
-
-    // Načti logo - primárně z POS URL, pokud selže, zkus lokální soubor, jinak placeholder
-    if (companyLogo && !companyLogo.startsWith('<')) {
-        // Pokud je to URL, zkus stáhnout z POS
-        if (companyLogo.startsWith('http://') || companyLogo.startsWith('https://')) {
-            try {
-                console.log('📷 Stahuji logo z POS URL:', companyLogo);
-                logoBuffer = await downloadImageFromUrl(companyLogo);
-                console.log('✅ Logo staženo z POS URL');
-            } catch (error) {
-                console.warn('⚠️ Nepodařilo se stáhnout logo z POS URL, zkouším lokální soubor...', error.message);
-                // Pokud selže stahování z URL, zkus lokální soubor jako zálohu
-                try {
-                    const localLogoPath = path.join(__dirname, '..', 'assets', 'company_logo.png');
-                    if (fs.existsSync(localLogoPath)) {
-                        console.log('📷 Načítám logo z lokálního souboru (záloha):', localLogoPath);
-                        logoBuffer = fs.readFileSync(localLogoPath);
-                        console.log('✅ Logo načteno z lokálního souboru (záloha)');
-                    } else {
-                        console.warn('⚠️ Lokální logo soubor také není k dispozici:', localLogoPath);
-                        logoBuffer = null;
-                    }
-                } catch (localError) {
-                    console.warn('⚠️ Nepodařilo se načíst ani lokální logo:', localError.message);
-                    logoBuffer = null;
-                }
-            }
-        } else {
-            // Pokud není URL, zkus lokální soubor
-            try {
-                const localLogoPath = path.join(__dirname, '..', 'assets', companyLogo);
-                if (fs.existsSync(localLogoPath)) {
-                    console.log('📷 Načítám logo z lokálního souboru:', localLogoPath);
-                    logoBuffer = fs.readFileSync(localLogoPath);
-                    console.log('✅ Logo načteno z lokálního souboru');
-                } else {
-                    console.warn('⚠️ Logo soubor nenalezen:', localLogoPath);
-                    logoBuffer = null;
-                }
-            } catch (error) {
-                console.warn('⚠️ Nepodařilo se načíst logo:', error.message);
-                logoBuffer = null;
-            }
+    const companyLogo = getRawValue(order, 'company_logo');
+    const companyGoogleReviewsQrCode = getRawValue(order, 'company_google_reviews_qr_code') || getRawValue(order, 'company_qr');
+    if (companyLogo && isNotPlaceholder(companyLogo) && (companyLogo.startsWith('http://') || companyLogo.startsWith('https://'))) {
+        try {
+            console.log('📷 Stahuji logo z POS URL:', companyLogo);
+            logoBuffer = await downloadImageFromUrl(companyLogo);
+            console.log('✅ Logo staženo z POS URL');
+        } catch (error) {
+            console.warn('⚠️ Nepodařilo se stáhnout logo z POS URL:', error.message);
+            logoBuffer = null;
         }
+    } else if (companyLogo && !companyLogo.startsWith('http')) {
+        console.warn('⚠️ Logo není validní URL:', companyLogo);
+        logoBuffer = null;
     }
 
-    // Načti QR kód - primárně z POS URL, pokud selže, zkus lokální soubor, jinak placeholder
-    if (companyGoogleReviewsQrCode && !companyGoogleReviewsQrCode.startsWith('<')) {
-        // Pokud je to URL, zkus stáhnout z POS
-        if (companyGoogleReviewsQrCode.startsWith('http://') || companyGoogleReviewsQrCode.startsWith('https://')) {
-            try {
-                console.log('📷 Stahuji QR kód z POS URL:', companyGoogleReviewsQrCode);
-                qrCodeBuffer = await downloadImageFromUrl(companyGoogleReviewsQrCode);
-                console.log('✅ QR kód stažen z POS URL');
-            } catch (error) {
-                console.warn('⚠️ Nepodařilo se stáhnout QR kód z POS URL, zkouším lokální soubor...', error.message);
-                // Pokud selže stahování z URL, zkus lokální soubor jako zálohu
-                try {
-                    const localQrPath = path.join(__dirname, '..', 'assets', 'company_qr.png');
-                    if (fs.existsSync(localQrPath)) {
-                        console.log('📷 Načítám QR kód z lokálního souboru (záloha):', localQrPath);
-                        qrCodeBuffer = fs.readFileSync(localQrPath);
-                        console.log('✅ QR kód načten z lokálního souboru (záloha)');
-                    } else {
-                        console.warn('⚠️ Lokální QR kód soubor také není k dispozici:', localQrPath);
-                        qrCodeBuffer = null;
-                    }
-                } catch (localError) {
-                    console.warn('⚠️ Nepodařilo se načíst ani lokální QR kód:', localError.message);
-                    qrCodeBuffer = null;
-                }
-            }
-        } else {
-            // Pokud není URL, zkus lokální soubor
-            try {
-                const localQrPath = path.join(__dirname, '..', 'assets', companyGoogleReviewsQrCode);
-                if (fs.existsSync(localQrPath)) {
-                    console.log('📷 Načítám QR kód z lokálního souboru:', localQrPath);
-                    qrCodeBuffer = fs.readFileSync(localQrPath);
-                    console.log('✅ QR kód načten z lokálního souboru');
-                } else {
-                    console.warn('⚠️ QR kód soubor nenalezen:', localQrPath);
-                    qrCodeBuffer = null;
-                }
-            } catch (error) {
-                console.warn('⚠️ Nepodařilo se načíst QR kód:', error.message);
-                qrCodeBuffer = null;
-            }
+    if (companyGoogleReviewsQrCode && isNotPlaceholder(companyGoogleReviewsQrCode) && (companyGoogleReviewsQrCode.startsWith('http://') || companyGoogleReviewsQrCode.startsWith('https://'))) {
+        try {
+            console.log('📷 Stahuji QR kód z POS URL:', companyGoogleReviewsQrCode);
+            qrCodeBuffer = await downloadImageFromUrl(companyGoogleReviewsQrCode);
+            console.log('✅ QR kód stažen z POS URL');
+        } catch (error) {
+            console.warn('⚠️ Nepodařilo se stáhnout QR kód z POS URL:', error.message);
+            qrCodeBuffer = null;
         }
+    } else if (companyGoogleReviewsQrCode && !companyGoogleReviewsQrCode.startsWith('http')) {
+        console.warn('⚠️ QR kód není validní URL:', companyGoogleReviewsQrCode);
+        qrCodeBuffer = null;
     }
 
-    // Nyní vytvoříme PDF - musíme použít Promise, protože PDFKit používá stream
     return new Promise((resolve, reject) => {
         const tmpPath = path.join(os.tmpdir(), `receipt-dynamic-${Date.now()}.pdf`);
         const doc = new PDFDocument({
-            size: [226, 1000], // 80mm width, unlimited height
+            size: [226, 1000],
             margins: { top: 38, bottom: 38, left: 10, right: 10 }
         });
-
-        // Register Bebas Neue font (if available)
         try {
             const bebasFontPath = path.join(__dirname, '..', 'fonts', 'BebasNeue-Regular.ttf');
             if (fs.existsSync(bebasFontPath)) {
@@ -168,7 +207,7 @@ async function generateReceiptPDF(order) {
 
         doc.pipe(fs.createWriteStream(tmpPath));
 
-        // Helper functions
+
         const centerText = (text, fontSize = 10, font = "Bebas Neue") => {
             doc.fontSize(fontSize).font(font).text(text, 10, doc.y, { width: 206, align: "center" });
         };
@@ -192,24 +231,39 @@ async function generateReceiptPDF(order) {
             doc.y = startY + doc.heightOfString(leftText, { width: 130 });
         };
 
-        // === ORDER NUMBER (top right) ===
-        const orderNumber = getValue(order, 'order_number') || getValue(order, 'orderNumber');
-        if (orderNumber) {
-            doc.fontSize(30).font("Bebas Neue");
-            doc.text(`#${orderNumber}`, { align: "right" });
+        const orderNumber = getRawValue(order, 'orderNumber') || getRawValue(order, 'order_number');
+        console.log('🔍 Order Number:', { orderNumber, isNotPlaceholder: orderNumber ? isNotPlaceholder(orderNumber) : false, rawOrderNumber: order.orderNumber, rawOrder_number: order.order_number });
+        if (orderNumber && isNotPlaceholder(orderNumber)) {
+            const orderText = `#${orderNumber}`;
+            const maxWidth = 206;
+            let fontSize = 30;
+            const minFontSize = 18;
+
+
+            doc.fontSize(fontSize).font("Bebas Neue");
+            let textWidth = doc.widthOfString(orderText);
+
+
+            if (textWidth > maxWidth) {
+                fontSize = Math.max(minFontSize, Math.floor((maxWidth / textWidth) * fontSize));
+                doc.fontSize(fontSize);
+                textWidth = doc.widthOfString(orderText);
+                console.log(`⚠️ Order number příliš dlouhý, zmenšuji písmo na ${fontSize}pt`);
+            }
+
+
+            doc.text(orderText, 10, doc.y, { width: maxWidth, align: "right" });
             doc.moveDown(0.5);
         }
 
         // === LOGO ===
-        // Placeholder: company_logo (URL z POS aplikace)
         const logoStartY = doc.y;
         let logoHeight = 0;
-        const logoWidthPoints = 80;
+        const logoWidthPoints = 120;
         const centerXAdjusted = (226 - logoWidthPoints) / 2;
         let hasLogoImage = false;
 
         if (logoBuffer) {
-            // Logo z company_logo URL nebo lokálního souboru
             try {
                 doc.image(logoBuffer, centerXAdjusted, logoStartY, {
                     width: logoWidthPoints,
@@ -219,136 +273,108 @@ async function generateReceiptPDF(order) {
                 doc.y = logoStartY + logoHeight + 8;
                 hasLogoImage = true;
                 console.log('✅ Logo z company_logo vykresleno');
+                doc.moveDown(1.5);
             } catch (error) {
                 console.error('❌ Chyba při vykreslování loga z bufferu:', error.message);
                 hasLogoImage = false;
-                // Pokud selže vykreslení, zobrazíme placeholder
-                doc.fontSize(11).font("Bebas Neue");
-                centerText('<company_logo>', 11);
-                doc.moveDown(0.2);
             }
-        } else {
-            // Pokud není logo buffer, zobrazíme placeholder
-            doc.fontSize(11).font("Bebas Neue");
-            // Pokud je hodnota placeholder, použij ji, jinak použij standardní placeholder
-            const logoPlaceholder = companyLogo && companyLogo.startsWith('<') ? companyLogo : '<company_logo>';
-            centerText(logoPlaceholder, 11);
-            doc.moveDown(0.2);
         }
 
         // === COMPANY NAME ===
-        // Placeholder: company_name (z POS aplikace)
         const companyName = getValue(order, 'company_name');
         if (!hasLogoImage) {
-            // Textové logo pokud není company_logo - zobrazí company_name nebo <company_name>
             centerText(companyName, 25, "Bebas Neue");
             doc.moveDown(0.2);
         }
 
-        // Zobraz company_name (nebo <company_name>) - buď pod logem nebo samostatně
         if (hasLogoImage) {
-            // Logo bylo zobrazeno, zobrazíme název firmy pod ním
             centerText(companyName, 18, "Bebas Neue");
             doc.moveDown(0.3);
-        } else {
-            // Logo nebylo zobrazeno, ale můžeme zobrazit company_name menším písmem (pokud už není jako textové logo)
-            // Pokud už bylo zobrazeno jako textové logo výše, nezobrazujeme znovu
-            // centerText(companyName, 18, "Bebas Neue");
-            // doc.moveDown(0.3);
         }
 
         // === COMPANY DETAILS ===
-        // Všechna pole z POS aplikace - pokud chybí, zobrazí se <placeholder>
         doc.fontSize(11).font("Bebas Neue");
 
-        // Placeholder: company_VAT (z POS aplikace)
         const companyVAT = getValue(order, 'company_VAT');
         centerText(`${companyVAT}`, 11);
 
-        // Placeholder: company_address (z POS aplikace)
         const companyAddress = getValue(order, 'company_address');
         centerText(companyAddress, 11);
 
-        // Placeholder: company_city a company_poscode (z POS aplikace)
         const companyCity = getValue(order, 'company_city');
         const companyPostalCode = getValue(order, 'company_poscode');
         centerText(`${companyCity} ${companyPostalCode}`, 11);
 
-        // Placeholder: company_country (z POS aplikace)
         const companyCountry = getValue(order, 'company_country');
         centerText(companyCountry, 11);
 
-        // Placeholder: company_phone (z POS aplikace)
-        const companyPhone = getValue(order, 'company_phone');
-        centerText(companyPhone, 11);
+        const companyPhone = getRawValue(order, 'company_phone');
+        if (companyPhone && isNotPlaceholder(companyPhone)) {
+            centerText(companyPhone, 11);
+        }
 
-        // Placeholder: company_email (z POS aplikace)
-        const companyEmail = getValue(order, 'company_email');
-        centerText(companyEmail, 11);
+        const companyEmail = getRawValue(order, 'company_email');
+        if (companyEmail && isNotPlaceholder(companyEmail)) {
+            centerText(companyEmail, 11);
+        }
 
-        // Placeholder: company_website (z POS aplikace)
-        const companyWebsite = getValue(order, 'company_website');
-        centerText(companyWebsite, 11);
+        const companyWebsite = getRawValue(order, 'company_website');
+        if (companyWebsite && isNotPlaceholder(companyWebsite)) {
+            centerText(companyWebsite, 11);
+        }
 
         doc.moveDown(0.8);
 
-        // === RECEIPT TYPE (REFUND OR NORMAL) ===
         const isRefund = order.isRefund || order.totalCZK < 0;
 
-        // === RECEIPT INFO ===
         doc.fontSize(12).font("Bebas Neue");
 
-        // Show RECEIPT TYPE header
         if (isRefund) {
             centerText("REFUND RECEIPT", 20, "Bebas Neue");
             doc.moveDown(0.3);
         }
 
-        // Receipt number
-        const receiptNumber = getValue(order, 'receipt_number') || getValue(order, 'receiptNumber') || orderNumber;
-        doc.fontSize(12).font("Bebas Neue");
-        doc.text(`Receipt No.: ${receiptNumber}`);
+        const receiptNumber = getRawValue(order, 'receiptNumber') || getRawValue(order, 'receipt_number') || orderNumber;
+        console.log('🔍 Receipt Number:', { receiptNumber, isNotPlaceholder: receiptNumber ? isNotPlaceholder(receiptNumber) : false, rawReceiptNumber: order.receiptNumber, rawReceipt_number: order.receipt_number });
+        if (receiptNumber && isNotPlaceholder(receiptNumber)) {
+            doc.fontSize(12).font("Bebas Neue");
+            doc.text(`Receipt No.: ${receiptNumber}`);
+        }
 
-        // For refunds, show which receipt is being refunded
-        const originalReceiptNumber = getValue(order, 'original_receipt_number') || getValue(order, 'originalReceiptNumber');
-        if (originalReceiptNumber) {
+        const originalReceiptNumber = getRawValue(order, 'originalReceiptNumber') || getRawValue(order, 'original_receipt_number');
+        if (originalReceiptNumber && isNotPlaceholder(originalReceiptNumber)) {
             doc.text(`Refunded Receipt No.: ${originalReceiptNumber}`);
         }
 
-        // Customer name
-        const customerName = getValue(order, 'customer_name') || getValue(order, 'customerName');
-        if (customerName && customerName !== "Walk-in Customer") {
+        const customerName = getRawValue(order, 'customerName') || getRawValue(order, 'customer_name');
+        console.log('🔍 Customer Name:', { customerName, isNotPlaceholder: customerName ? isNotPlaceholder(customerName) : false, rawCustomerName: order.customerName, rawCustomer_name: order.customer_name });
+        if (customerName && isNotPlaceholder(customerName) && customerName !== "Walk-in Customer") {
             doc.text(`Customer: ${customerName}`);
         }
 
-        const createdAt = getValue(order, 'created_at') || getValue(order, 'createdAt');
-        if (createdAt) {
-            doc.text(createdAt);
+        const createdAt = getRawValue(order, 'createdAt') || getRawValue(order, 'created_at');
+        console.log('🔍 Created At:', { createdAt, isNotPlaceholder: createdAt ? isNotPlaceholder(createdAt) : false, rawCreatedAt: order.createdAt, rawCreated_at: order.created_at });
+        if (createdAt && isNotPlaceholder(createdAt)) {
+            const formattedDate = formatDate(createdAt);
+            doc.text(`Date: ${formattedDate}`);
         }
 
-        // Solid line separator
         doc.moveDown(0.3);
         doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
         doc.moveDown(0.3);
-
         doc.moveDown(0.5);
-
-        // === ITEMS ===
         let itemCount = 0;
         const items = order.items || [];
 
         items.forEach((item) => {
             itemCount += item.qty || 1;
 
-            // Item name
             doc.fontSize(11).font("Bebas Neue");
             doc.text(item.name || '');
 
-            // Quantity and price
             const unitPrice = item.unitPrice || item.price || 0;
             const itemTotal = (item.qty || 1) * unitPrice;
 
-            // For refunds, show negative values
             const displayUnitPrice = isRefund ? -Math.abs(unitPrice) : unitPrice;
             const displayItemTotal = isRefund ? -Math.abs(itemTotal) : itemTotal;
 
@@ -356,40 +382,30 @@ async function generateReceiptPDF(order) {
                 leftRightText(`${item.qty} × ${displayUnitPrice.toFixed(2)} CZK`, "");
             }
 
-            // Total price right aligned
             doc.text(`${displayItemTotal.toFixed(2)} CZK`, { align: "right" });
             doc.moveDown(0.2);
         });
 
-        // Solid line separator
         doc.moveDown(0.3);
         doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
         doc.moveDown(0.3);
-
-        // === SUMMARY ===
         leftRightText(`Items Count: ${itemCount}`, "");
 
-        // Solid line separator
         doc.moveDown(0.3);
         doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
         doc.moveDown(0.3);
-
-        // Subtotal
         const subtotal = order.subtotal;
         if (subtotal && subtotal !== order.totalCZK) {
             const displaySubtotal = isRefund ? -Math.abs(subtotal) : subtotal;
             leftRightText("Subtotal:", `${displaySubtotal.toFixed(2)} CZK`);
         }
 
-        // Taxes
         if (order.vat && order.vat.length > 0) {
             order.vat.forEach((vatItem) => {
                 const displayVatAmount = isRefund ? -Math.abs(vatItem.amount) : vatItem.amount;
                 leftRightText(`Tax ${vatItem.rate}%:`, `${displayVatAmount.toFixed(2)} CZK`);
             });
         }
-
-        // Discount
         if (order.discountAmount && order.discountAmount > 0) {
             let discountLabel = "Discount";
 
@@ -418,26 +434,21 @@ async function generateReceiptPDF(order) {
 
         doc.moveDown(0.3);
 
-        // === TOTAL ===
         const totalCZK = order.totalCZK || 0;
         const displayTotal = isRefund ? -Math.abs(totalCZK) : totalCZK;
         leftRightTextWithCurrency("TOTAL:", displayTotal.toFixed(2), "CZK", 15, "Bebas Neue");
 
-        // EUR equivalent
         if (order.totalEUR) {
             doc.fontSize(12).font("Bebas Neue");
             const displayTotalEUR = isRefund ? -Math.abs(order.totalEUR) : order.totalEUR;
             doc.text(`= ${displayTotalEUR.toFixed(2)} EUR`, { align: "right" });
         }
 
-        // Solid line separator
         doc.moveDown(0.3);
         doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
         doc.moveDown(0.3);
-
         doc.moveDown(0.5);
 
-        // === PAYMENT ===
         doc.fontSize(15).font("Bebas Neue");
 
         if (isRefund) {
@@ -464,7 +475,6 @@ async function generateReceiptPDF(order) {
 
         doc.moveDown(1);
 
-        // === FOOTER ===
         if (order.exchangeRate) {
             centerText(`Exchange rate: ${order.exchangeRate}`, 12);
             doc.moveDown(0.3);
@@ -472,22 +482,17 @@ async function generateReceiptPDF(order) {
 
         doc.moveDown(1);
 
-        // === QR CODE ===
-        // Placeholder: company_google_reviews_qr_code (URL z POS aplikace)
-        const qrPlaceholderValue = companyGoogleReviewsQrCode && companyGoogleReviewsQrCode.startsWith('<')
-            ? companyGoogleReviewsQrCode
-            : '<company_google_reviews_qr_code>';
-
-        console.log('🔍 QR Code:', { hasBuffer: !!qrCodeBuffer, qrPlaceholder: qrPlaceholderValue, companyGoogleReviewsQrCode });
-
-
-        doc.fontSize(11).font("Bebas Neue");
-        centerText("We appreciate your feedback", 18);
-        doc.moveDown(0.3);
-
         if (qrCodeBuffer) {
+            const qrTextAbove = getRawValue(order, 'qr_text_above') || getRawValue(order, 'qrTextAbove');
+
+            if (qrTextAbove && isNotPlaceholder(qrTextAbove)) {
+                doc.fontSize(11).font("Bebas Neue");
+                centerText(qrTextAbove, 18);
+                doc.moveDown(0.3);
+            }
+
             try {
-                const qrWidthPoints = 80;
+                const qrWidthPoints = 120;
                 const qrCenterXAdjusted = (226 - qrWidthPoints) / 2;
 
                 doc.image(qrCodeBuffer, qrCenterXAdjusted, doc.y, {
@@ -497,52 +502,42 @@ async function generateReceiptPDF(order) {
 
                 doc.y = doc.y + qrWidthPoints + 8;
                 console.log('✅ QR kód z company_google_reviews_qr_code vykreslen');
+
+                const qrTextBelow = getRawValue(order, 'qr_text_below') || getRawValue(order, 'qrTextBelow');
+
+                if (qrTextBelow && isNotPlaceholder(qrTextBelow)) {
+                    doc.moveDown(0.5);
+                    doc.fontSize(18).font("Bebas Neue");
+                    centerText(qrTextBelow, 18);
+                }
             } catch (error) {
                 console.error('❌ Chyba při vykreslování QR kódu:', error.message);
-                // Pokud selže obrázek, zobrazíme placeholder
-                centerText(qrPlaceholderValue, 11);
             }
-        } else {
-            // Pokud není QR kód buffer, zobrazíme placeholder
-            centerText(qrPlaceholderValue, 11);
         }
 
-        doc.moveDown(1);
-
-        // === FOOTER TEXT ===
-        // Placeholdery pro footer text z POS aplikace
-        const footerCustomText = getValue(order, 'footer_custom_text');
-        const footerSocialText = getValue(order, 'footer_social_text');
-        const footerSocialHandle = getValue(order, 'footer_social_handle');
+        const footerCustomText = getRawValue(order, 'footer_custom_text') || getRawValue(order, 'footerCustomText');
+        const footerSocialText = getRawValue(order, 'footer_social_text') || getRawValue(order, 'footerSocialText');
+        const footerSocialHandle = getRawValue(order, 'footer_social_handle') || getRawValue(order, 'footerSocialHandle');
 
         console.log('🔍 Footer values:', { footerCustomText, footerSocialText, footerSocialHandle });
 
-        // Vždy zobrazíme footer text (pokud není placeholder, použijeme hodnotu z POS, jinak výchozí)
-        doc.fontSize(18).font("Bebas Neue");
-        if (!footerCustomText.startsWith('<')) {
+        if (footerCustomText && isNotPlaceholder(footerCustomText)) {
+            doc.fontSize(18).font("Bebas Neue");
             centerText(footerCustomText, 18);
-        } else {
-            centerText("LOOT YOUR BALLS", 18);
+            doc.moveDown(0.1);
         }
-        doc.moveDown(0.1);
 
-        doc.fontSize(11).font("Bebas Neue");
-        if (!footerSocialText.startsWith('<')) {
+        if (footerSocialText && isNotPlaceholder(footerSocialText)) {
+            doc.fontSize(11).font("Bebas Neue");
             centerText(footerSocialText, 11);
-        } else {
-            centerText("Enjoy & follow us on our social media", 11);
         }
 
-        if (!footerSocialHandle.startsWith('<')) {
+        if (footerSocialHandle && isNotPlaceholder(footerSocialHandle)) {
+            doc.fontSize(11).font("Bebas Neue");
             centerText(footerSocialHandle, 11);
-        } else {
-            centerText("@looteacz", 11);
         }
 
         doc.moveDown(1);
-
-
-        // Čekáme na dokončení zápisu PDF
         doc.on('end', () => {
             console.log('✅ Dynamický template PDF dokončen:', tmpPath);
             resolve(tmpPath);

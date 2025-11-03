@@ -19,44 +19,120 @@ Lokální tiskový agent pro POS systém s podporou účtenek a štítků.
 
 ## 🚀 Rychlý start
 
-### Spuštění serveru
+### Instalace závislostí
 ```bash
-# Silent spuštění (doporučeno)
+npm install
+```
+
+### Spuštění serveru
+
+**Nejjednodušší způsob:**
+```bash
+# Spustí server v produkčním módu
+npm start
+
+# Nebo pomocí start.bat
+start.bat
+```
+
+**Silent spuštění (na pozadí):**
+```bash
+# Silent spuštění (doporučeno pro produkci)
 scripts\start-silent.bat
 
 # Nebo pomocí VBS (nejtišší)
 scripts\start-silent.vbs
+```
 
-# Interaktivní správce
+**Interaktivní správce:**
+```bash
 scripts\server-manager.bat
 ```
 
+### Restart serveru
+
+**Rychlý restart pomocí npm:**
+```bash
+npm restart
+```
+
+Tento příkaz automaticky:
+1. Zastaví běžící server na portu 8000/8001
+2. Počká na ukončení procesů
+3. Spustí server znovu pomocí `start.bat`
+
 ### Zastavení serveru
+
+**Pomocí skriptu:**
 ```bash
 scripts\stop-server.bat
 ```
+
+**Manuálně (PowerShell):**
+```powershell
+# Najdeme a ukončíme proces na portu 8000/8001
+$port = Get-NetTCPConnection -LocalPort 8000,8001 -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($port) { Stop-Process -Id $port.OwningProcess -Force }
+```
+
+**Manuálně (CMD):**
+```cmd
+for /f "tokens=5" %a in ('netstat -ano ^| findstr ":800"') do taskkill /PID %a /F
+```
+
+## 📋 Přehled příkazů
+
+| Příkaz | Popis |
+|--------|-------|
+| `npm start` | Spustí server v produkčním módu |
+| `npm restart` | Restartuje server (zastaví a znovu spustí) |
+| `start.bat` | Spustí server pomocí nejlepšího dostupného způsobu |
+| `scripts\start-silent.bat` | Spustí server na pozadí (silent) |
+| `scripts\stop-server.bat` | Zastaví běžící server |
+| `scripts\server-manager.bat` | Interaktivní správce serveru |
+| `scripts\restart-server.bat` | Pomocný skript pro restart (volá se z `npm restart`) |
+
+## 🔄 Jak to funguje
+
+### Architektura
+Print Agent Server je Node.js aplikace, která:
+1. **Naslouchá na portu 8000** (nebo 8001, pokud 8000 není dostupný)
+2. **Přijímá HTTP POST požadavky** od POS aplikace
+3. **Generuje PDF dokumenty** pro účtenky pomocí PDFKit
+4. **Tiskne přes SumatraPDF** na termální tiskárnu
+5. **Komunikuje s Brother QL-700** pro tisk štítků pomocí Puppeteer
+
+### Dynamický template systém
+- **Používá se pouze dynamický template** (`receiptTemplateDynamic.js`)
+- **Všechna data z POS aplikace**: Logo, QR kódy, firemní údaje atd. jsou načítány z JSON payloadu
+
+### Automatické formátování
+- **Datum**: Automaticky se přeformátuje na formát `dd-mm-yyyy` (např. "03-11-2025")
+- **Velikosti**: Logo a QR kód mají pevnou velikost 80 bodů (nastaveno v Print Agentu)
+- **Encoding**: Batch soubory používají UTF-8 kódování pro správné zobrazení českých znaků
 
 ## 📁 Struktura projektu
 
 ```
 print-agent/
-├── 📄 server.js              # Hlavní server aplikace
-├── 📦 package.json           # Node.js závislosti
-├── 📁 print/                 # Tiskové moduly
-│   ├── printReceipt.js       # Tisk účtenek
-│   └── printSticker.js       # Tisk štítků
-├── 📁 templates/             # Šablony pro tisk
-│   ├── receiptTemplate.js    # Šablona účtenky
-│   └── stickerTemplate.html  # Šablona štítku
-├── 📁 scripts/               # Spouštěcí skripty
-│   ├── start-silent.bat      # Silent spuštění
-│   ├── start-silent.vbs      # VBS silent spuštění
-│   ├── server-manager.bat    # Interaktivní správce
-│   ├── stop-server.bat       # Zastavení serveru
-│   ├── install-service.bat   # Instalace Windows služby
-│   └── uninstall-service.bat # Odebrání Windows služby
-├── 📁 assets/                # Obrázky a zdroje
-└── 📁 fonts/                 # Fonty pro tisk
+├── 📄 server.js                      # Hlavní server aplikace
+├── 📦 package.json                   # Node.js závislosti a skripty
+├── 🚀 start.bat                      # Hlavní spouštěcí skript
+├── 📁 print/                         # Tiskové moduly
+│   ├── printReceipt.js               # Tisk účtenek
+│   └── printSticker.js               # Tisk štítků
+├── 📁 templates/                     # Šablony pro tisk
+│   └── receiptTemplateDynamic.js     # Dynamická šablona účtenky
+├── 📁 scripts/                       # Spouštěcí a správní skripty
+│   ├── start-silent.bat              # Silent spuštění (pozadí)
+│   ├── start-silent.vbs              # VBS silent spuštění (nejtišší)
+│   ├── stop-server.bat               # Zastavení serveru
+│   ├── restart-server.bat            # Restart serveru (volá se z npm restart)
+│   ├── server-manager.bat            # Interaktivní správce
+│   ├── install-service.bat           # Instalace Windows služby
+│   └── uninstall-service.bat         # Odebrání Windows služby
+├── 📁 assets/                        # Obrázky a zdroje (logo, QR kódy)
+└── 📁 fonts/                         # Fonty pro tisk (Bebas Neue)
 ```
 
 ## 🔧 Konfigurace
@@ -190,7 +266,7 @@ Refunded amount:        -89.00 CZK
   // === ZÁKLADNÍ INFO ===
   "orderNumber": "123",              // Číslo objednávky (#123 nahoře)
   "receiptNumber": "R-001",          // Číslo účtenky
-  "createdAt": "2024-03-18 12:34",  // Datum a čas
+  "createdAt": "2024-03-18 12:34",  // Datum a čas (automaticky formátováno na dd-mm-yyyy)
   "customerName": "Jan Novák",       // Jméno zákazníka
   
   // === REFUND ===
@@ -232,9 +308,41 @@ Refunded amount:        -89.00 CZK
   "change": 42.00,                   // Vráceno (automaticky se spočítá pokud chybí)
   
   // === DALŠÍ ===
-  "exchangeRate": "25.4 CZK/EUR"     // Kurz (volitelné)
+  "exchangeRate": "25.4 CZK/EUR",    // Kurz (volitelné)
+  
+  // === FIRMOVÉ ÚDAJE (pro dynamický template) ===
+  "company_logo": "https://...",     // URL loga firmy
+  "company_name": "Název firmy s.r.o.",
+  "company_phone": "+420 123 456 789",
+  "company_address": "Ulice 123",
+  "company_city": "Praha",
+  "company_poscode": "11000",
+  "company_country": "Česká republika",
+  "company_VAT": "CZ12345678",
+  "company_email": "info@firma.cz",
+  "company_website": "https://firma.cz",
+  "company_google_reviews_qr_code": "https://...",  // URL QR kódu pro recenze
+  
+  // === QR CODE TEXT (volitelné) ===
+  "qr_text_above": "We appreciate your feedback",  // Text nad QR kódem - zobrazí se pouze pokud je poslán
+  "qr_text_below": "Thank You!",                   // Text pod QR kódem - zobrazí se pouze pokud je poslán
+  
+  // === FOOTER TEXT (volitelné) ===
+  "footer_custom_text": "Vlastní text",  // První řádek footeru (velký text) - zobrazí se pouze pokud je poslán
+  "footer_social_text": "Sledujte nás",  // Druhý řádek footeru (malý text) - zobrazí se pouze pokud je poslán
+  "footer_social_handle": "@firma"        // Třetí řádek footeru (handle) - zobrazí se pouze pokud je poslán
 }
 ```
+
+### 📌 Poznámky k dynamickému template
+
+- **Logo a QR kód**: Pokud jsou URL, stáhnou se automaticky. Pokud nejsou k dispozici, nezobrazí se nic (žádné placeholdery)
+- **Firemní údaje**: Pokud nějaké pole chybí, zobrazí se placeholder `<company_xxx>` (kromě company_phone, company_email, company_website - ty se nezobrazí, pokud chybí)
+- **QR texty**: Texty nad a pod QR kódem lze přizpůsobit pomocí `qr_text_above` a `qr_text_below` (zobrazí se pouze pokud jsou poslány z POS aplikace)
+- **Footer texty**: Tři řádky footeru lze přizpůsobit pomocí `footer_custom_text`, `footer_social_text` a `footer_social_handle` (zobrazí se pouze pokud jsou poslány z POS aplikace)
+- **Formátování data**: Automaticky se přeformátuje na `dd-mm-yyyy hh:mm:ss` bez ohledu na vstupní formát
+- **Velikosti**: Logo a QR kód mají pevnou velikost 80 bodů (nastaveno v Print Agentu)
+- **OrderNumber**: Automaticky se přizpůsobí velikost písma pro dlouhá čísla, aby se vešla na účtenku
 
 ---
 
@@ -385,20 +493,30 @@ POST /open-drawer
 GET /healthcheck
 ```
 
-## 🛠️ Správa
+## 🛠️ Správa a diagnostika
 
-### Kontrola stavu
+### Kontrola stavu serveru
 ```bash
-# Zkontrolovat, zda server běží
+# Zkontrolovat, zda server běží na portu 8000/8001
 netstat -an | findstr ":800"
 
-# Nebo použít správce
+# Nebo použít interaktivní správce
 scripts\server-manager.bat
+
+# Healthcheck přes API
+curl http://localhost:8000/healthcheck
 ```
 
-### Logy
-- Server logy: `server-status.log`
-- PowerShell logy: `%TEMP%\print-agent.log`
+### Logy a debugování
+- **Server logy**: Zobrazují se v konzoli (pokud běží v debug módu)
+- **Status log**: `server-status.log` (pokud je vytvořen při silent spuštění)
+- **Debug console**: Všechny změny v šablonách se projeví po restartu (`npm restart`)
+
+### Workflow pro vývoj
+1. **Upravte kód** v `templates/receiptTemplateDynamic.js` nebo jiných souborech
+2. **Restartujte server**: `npm restart`
+3. **Otestujte**: Odešlete testovací požadavek na `/print-receipt`
+4. **Zkontrolujte výstup**: Vytisknutá účtenka nebo PDF v temp složce
 
 ## 🎯 Tipy pro lepší UI
 

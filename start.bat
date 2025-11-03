@@ -1,25 +1,26 @@
 @echo off
-REM Print Agent Server - Rychlý start
-REM Tento skript spustí server pomocí nejlepšího dostupného způsobu
+chcp 65001 > nul
+REM Print Agent Server - Rychly start
+REM Tento skript spusti server pomoci nejlepsiho dostupneho zpusobu
 
-echo 🖨️ Spouštím Print Agent Server...
+echo Spoustim Print Agent Server...
 
-REM Zkusíme spustit pomocí VBS skriptu (nejtišší)
+REM Zkusime spustit pomoci VBS skriptu (nejtisi)
 if exist "scripts\start-silent.vbs" (
-    echo ✅ Používám VBS silent mód...
+    echo Pouzivam VBS silent mod...
     cscript //nologo "scripts\start-silent.vbs"
     goto :check
 )
 
-REM Pokud VBS není dostupný, použijeme BAT
+REM Pokud VBS neni dostupny, pouzijeme BAT
 if exist "scripts\start-silent.bat" (
-    echo ✅ Používám BAT silent mód...
+    echo Pouzivam BAT silent mod...
     call "scripts\start-silent.bat"
     goto :check
 )
 
-REM Pokud nic není dostupný, spustíme přímo
-echo ⚠️ Spouštím přímo Node.js...
+REM Pokud nic neni dostupny, spustime primo
+echo Spoustim primo Node.js...
 node server.js
 goto :end
 
@@ -27,10 +28,10 @@ goto :end
 timeout /t 2 /nobreak > nul
 netstat -an | findstr ":800" > nul
 if %errorlevel% equ 0 (
-    echo ✅ Server běží úspěšně!
-    echo 🌐 Dostupné na: http://localhost:8000
+    echo Server bezi uspesne!
+    echo Dostupné na: http://localhost:8000
 ) else (
-    echo ❌ Server se nespustil
+    echo Server se nespustil
 )
 
 :end
