@@ -130,12 +130,38 @@ app.get('/', (req, res) => {
                     margin: 5px 0;
                     color: #666;
                 }
+                .network-info {
+                    margin-top: 20px;
+                    padding: 15px;
+                    background: #e7f3ff;
+                    border-radius: 5px;
+                    border-left: 4px solid #2196F3;
+                    text-align: left;
+                }
+                .network-info h4 {
+                    margin-bottom: 10px;
+                    color: #1976D2;
+                    font-size: 14px;
+                }
+                .network-info code {
+                    background: #fff;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-family: 'Courier New', monospace;
+                    font-size: 13px;
+                    color: #d32f2f;
+                }
             </style>
         </head>
         <body>
             <div class="container">
                 <img src="${logoPath}" alt="LOOTEA Logo" class="logo" onerror="this.style.display='none';">
                 <div class="title">PRINT AGENT</div>
+                
+                <div class="network-info" id="network-info">
+                    <h4>🌐 Síťové informace:</h4>
+                    <p style="margin: 5px 0; font-size: 13px;">Načítám...</p>
+                </div>
                 
                 <div class="buttons">
                     <button onclick="testDrawer(event)">🧪 Testovat pokladní zásuvku</button>
@@ -153,6 +179,31 @@ app.get('/', (req, res) => {
                 </div>
                 
                 <script>
+                    // Načtení síťových informací při načtení stránky
+                    async function loadNetworkInfo() {
+                        try {
+                            const response = await fetch('/network-info');
+                            const data = await response.json();
+                            
+                            if (data.status === 'ok') {
+                                const networkInfoDiv = document.getElementById('network-info');
+                                networkInfoDiv.innerHTML = \`
+                                    <h4>🌐 Síťové informace:</h4>
+                                    <p style="margin: 5px 0; font-size: 13px;">
+                                        <strong>📍 Lokálně:</strong> <code>\${data.localhost}</code><br>
+                                        <strong>🌐 V síti:</strong> <code>\${data.network}</code><br>
+                                        <strong>💡 Pro iPad:</strong> <code>\${data.network}</code>
+                                    </p>
+                                \`;
+                            }
+                        } catch (error) {
+                            console.error('Chyba při načítání síťových informací:', error);
+                        }
+                    }
+                    
+                    // Načteme síťové informace při načtení stránky
+                    loadNetworkInfo();
+                    
                     async function testDrawer(event) {
                         const button = event.target;
                         const resultDiv = document.getElementById('result');
@@ -352,6 +403,25 @@ app.post('/print-sticker', async (req, res) => {
 
 app.get('/healthcheck', (req, res) => {
     res.json({ status: 'ok' })
+})
+
+// Endpoint pro zjištění IP adresy serveru
+app.get('/network-info', async (req, res) => {
+    try {
+        const localIP = await getLocalIPAddress();
+        const port = PORT;
+        res.json({
+            status: 'ok',
+            localhost: `http://localhost:${port}`,
+            network: `http://${localIP}:${port}`,
+            ipAddress: localIP,
+            port: port,
+            message: `Pro přístup z iPadu použijte: http://${localIP}:${port}`
+        });
+    } catch (e) {
+        console.error('❌ Chyba při zjišťování síťových informací:', e.message);
+        res.status(500).json({ status: 'error', message: e.message });
+    }
 })
 
 // Endpoint pro kontrolu dostupnosti tiskáren
@@ -554,6 +624,26 @@ app.post('/open-drawer', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 8000
+const HOST = process.env.HOST || '0.0.0.0' // Poslouchá na všech síťových rozhraních
+
+// Funkce pro zjištění IP adresy PC v síti
+async function getLocalIPAddress() {
+    const os = await import('os');
+    const networkInterfaces = os.networkInterfaces();
+    const addresses = [];
+
+    for (const interfaceName in networkInterfaces) {
+        const interfaces = networkInterfaces[interfaceName];
+        for (const iface of interfaces) {
+            // Ignorujeme loopback a IPv6
+            if (iface.family === 'IPv4' && !iface.internal) {
+                addresses.push(iface.address);
+            }
+        }
+    }
+
+    return addresses.length > 0 ? addresses[0] : 'localhost';
+}
 
 // Funkce pro kontrolu, zda je port už obsazený
 async function checkPort(port) {
@@ -571,6 +661,7 @@ async function checkPort(port) {
 // Spuštění serveru s kontrolou portu
 async function startServer() {
     const isPortAvailable = await checkPort(PORT);
+    const localIP = await getLocalIPAddress();
 
     if (!isPortAvailable) {
         console.log(`⚠️ Port ${PORT} je už obsazený. Zkouším port ${PORT + 1}...`);
@@ -578,16 +669,22 @@ async function startServer() {
         const isAltPortAvailable = await checkPort(altPort);
 
         if (isAltPortAvailable) {
-            app.listen(altPort, () => {
-                console.log(`🚀 Print agent běží na http://localhost:${altPort}`)
+            app.listen(altPort, HOST, () => {
+                console.log(`🚀 Print agent běží na:`)
+                console.log(`   📍 Lokálně: http://localhost:${altPort}`)
+                console.log(`   🌐 V síti:  http://${localIP}:${altPort}`)
+                console.log(`   💡 Pro iPad použijte: http://${localIP}:${altPort}`)
             });
         } else {
             console.error(`❌ Ani port ${PORT} ani ${altPort} není dostupný. Ukončuji aplikaci.`);
             process.exit(1);
         }
     } else {
-        app.listen(PORT, () => {
-            console.log(`🚀 Print agent běží na http://localhost:${PORT}`)
+        app.listen(PORT, HOST, () => {
+            console.log(`🚀 Print agent běží na:`)
+            console.log(`   📍 Lokálně: http://localhost:${PORT}`)
+            console.log(`   🌐 V síti:  http://${localIP}:${PORT}`)
+            console.log(`   💡 Pro iPad použijte: http://${localIP}:${PORT}`)
         });
     }
 }

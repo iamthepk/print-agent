@@ -143,7 +143,70 @@ Nastavte v `.env` souboru:
 RECEIPT_PRINTER=EPSON TM-T20III Receipt
 STICKER_PRINTER=Brother QL-700
 PORT=8000
+HOST=0.0.0.0
 ```
+
+### 🌐 Přístup z iPadu nebo jiného zařízení v síti
+
+Print Agent nyní automaticky poslouchá na **všech síťových rozhraních**, takže můžete přistupovat z iPadu, telefonu nebo jiného zařízení ve stejné síti.
+
+#### Krok 1: Zjistěte IP adresu PC
+Po spuštění serveru uvidíte v konzoli:
+```
+🚀 Print agent běží na:
+   📍 Lokálně: http://localhost:8000
+   🌐 V síti:  http://192.168.1.100:8000
+   💡 Pro iPad použijte: http://192.168.1.100:8000
+```
+
+**Nebo zjistěte IP adresu manuálně:**
+- **Windows (CMD):** `ipconfig` → hledejte "IPv4 Address" pod aktivním síťovým adaptérem
+- **Windows (PowerShell):** `Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}`
+
+#### Krok 2: Nakonfigurujte firewall
+Windows Firewall může blokovat příchozí připojení. Povolte port:
+
+**Automaticky (PowerShell jako Admin):**
+```powershell
+New-NetFirewallRule -DisplayName "Print Agent" -Direction Inbound -LocalPort 8000,8001 -Protocol TCP -Action Allow
+```
+
+**Nebo manuálně:**
+1. Otevřete **Windows Defender Firewall**
+2. **Pokročilá nastavení** → **Příchozí pravidla** → **Nové pravidlo**
+3. Vyberte **Port** → **TCP** → **Specifické místní porty:** `8000,8001`
+4. **Povolit připojení** → Zaškrtněte všechny profily → Dokončit
+
+#### Krok 3: V POS aplikaci na iPadu použijte IP adresu
+Místo `http://localhost:8000` použijte IP adresu vašeho PC:
+```javascript
+// ❌ Špatně (nebude fungovat z iPadu)
+const printAgentUrl = 'http://localhost:8000'
+
+// ✅ Správně (funguje z iPadu)
+const printAgentUrl = 'http://192.168.1.100:8000'  // Nahraďte IP adresou vašeho PC
+```
+
+**Příklad v POS aplikaci:**
+```javascript
+// Tisk účtenky z iPadu
+await fetch('http://192.168.1.100:8000/print-receipt', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(receiptData)
+});
+```
+
+#### ⚠️ Důležité poznámky:
+- **PC a iPad musí být ve stejné Wi‑Fi síti**
+- **IP adresa se může změnit** pokud PC používá DHCP (doporučujeme nastavit statickou IP nebo použít název PC)
+- **Pro produkci:** Zvažte nastavení statické IP adresy na PC nebo použití hostname
+
+#### 🔍 Testování připojení z iPadu:
+1. Otevřete Safari na iPadu
+2. Zadejte: `http://[IP_ADRESA_PC]:8000`
+3. Měli byste vidět Print Agent webové rozhraní
+4. Nebo použijte: `http://[IP_ADRESA_PC]:8000/healthcheck` → mělo by vrátit `{"status":"ok"}`
 
 ### Automatické spouštění
 1. **Windows služba** (nejlepší):
@@ -491,6 +554,23 @@ POST /open-drawer
 ### Healthcheck
 ```http
 GET /healthcheck
+```
+
+### Síťové informace
+```http
+GET /network-info
+```
+
+Vrátí IP adresu serveru a URL pro přístup z jiných zařízení:
+```json
+{
+  "status": "ok",
+  "localhost": "http://localhost:8000",
+  "network": "http://192.168.1.100:8000",
+  "ipAddress": "192.168.1.100",
+  "port": 8000,
+  "message": "Pro přístup z iPadu použijte: http://192.168.1.100:8000"
+}
 ```
 
 ## 🛠️ Správa a diagnostika
