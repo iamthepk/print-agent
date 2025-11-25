@@ -185,21 +185,80 @@ New-NetFirewallRule -DisplayName "Print Agent" -Direction Inbound -LocalPort 800
 
 **1. Automatické zjištění URL (doporučeno):**
 ```javascript
-// Získejte správnou URL automaticky
-async function getPrintAgentUrl() {
+// Získejte správnou URL automaticky - zkusí všechny varianty v SPRÁVNÉM pořadí
+async function getPrintAgentUrl(hostname = 'lootealetenska', port = 8000, clientType = 'web') {
+  // DŮLEŽITÉ: Pro webové aplikace zkoušíme BEZ .local jako první!
+  // .local často nefunguje v webových aplikacích kvůli bezpečnostním omezením prohlížeče
+  
+  // Nejdřív zkusíme získat správné pořadí variant z print agentu
   try {
-    // Zkuste se připojit k print agentu pomocí hostname
-    const response = await fetch('http://lootealetenska:8000/print-agent-url?type=web');
-    const data = await response.json();
-    return data.url; // Vrátí např. "http://lootealetenska:8000"
+    const detectUrl = `http://${hostname}:${port}/detect-variants?hostname=${hostname}&port=${port}&type=${clientType}`;
+    const response = await fetch(detectUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(3000) // Timeout 3 sekundy
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.status === 'ok' && data.variants) {
+        // Zkusíme každou variantu v pořadí, dokud jedna nefunguje
+        for (const url of data.variants) {
+          try {
+            const testResponse = await fetch(`${url}/healthcheck`, {
+              method: 'GET',
+              signal: AbortSignal.timeout(2000) // Timeout 2 sekundy
+            });
+            if (testResponse.ok) {
+              console.log(`✅ Našli jsme funkční URL: ${url}`);
+              return url; // Našli jsme funkční URL!
+            }
+          } catch (e) {
+            // Tato varianta nefunguje, zkusíme další
+            console.log(`❌ ${url} nefunguje, zkouším další...`);
+            continue;
+          }
+        }
+      }
+    }
   } catch (error) {
-    // Fallback na hostname
-    return 'http://lootealetenska:8000';
+    console.warn('Nepodařilo se připojit k /detect-variants:', error);
   }
+  
+  // Fallback: zkusíme varianty v správném pořadí pro webové aplikace
+  const urlVariants = clientType === 'ios' 
+    ? [
+        `http://${hostname}.local:${port}`,  // iOS: .local funguje
+        `http://${hostname}:${port}`,
+      ]
+    : [
+        `http://${hostname}:${port}`,        // Web: BEZ .local jako první!
+        `http://${hostname}.local:${port}`,  // Web: .local jako poslední (často nefunguje)
+      ];
+  
+  for (const url of urlVariants) {
+    try {
+      const testResponse = await fetch(`${url}/healthcheck`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(2000)
+      });
+      if (testResponse.ok) {
+        console.log(`✅ Našli jsme funkční URL (fallback): ${url}`);
+        return url;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+  
+  // Pokud nic nefunguje, vraťme první variantu (hostname bez .local pro web)
+  console.warn('⚠️ Nepodařilo se ověřit připojení, používám výchozí URL');
+  return urlVariants[0];
 }
 
-// Použití
-const printAgentUrl = await getPrintAgentUrl();
+// Použití v POS aplikaci
+const printAgentUrl = await getPrintAgentUrl('lootealetenska', 8000, 'web');
+console.log(`Používám Print Agent URL: ${printAgentUrl}`);
+
 await fetch(`${printAgentUrl}/print-receipt`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -207,17 +266,36 @@ await fetch(`${printAgentUrl}/print-receipt`, {
 });
 ```
 
+**⚠️ DŮLEŽITÉ pro implementaci v POS aplikaci:**
+- Pro **webové aplikace** zkoušejte varianty v tomto pořadí:
+  1. `http://lootealetenska:8000` (BEZ .local) ← **zkusit jako první!**
+  2. `http://192.168.1.100:8000` (IP adresa)
+  3. `http://lootealetenska.local:8000` (S .local) ← **zkusit jako poslední!**
+- Pro **iOS zařízení** zkoušejte:
+  1. `http://lootealetenska.local:8000` (S .local) ← funguje na iOS
+  2. `http://lootealetenska:8000` (BEZ .local)
+  3. IP adresa
+
 **2. Použití hostname přímo:**
 ```javascript
-// ✅ Správně pro webovou aplikaci
-const printAgentUrl = 'http://lootealetenska:8000';  // Hostname PC s print agentem
+// ✅ SPRÁVNĚ pro webovou aplikaci (doporučeno)
+const printAgentUrl = 'http://lootealetenska:8000';  // Hostname BEZ .local
 
-// ✅ Pro iOS zařízení (iPad)
+// ⚠️ Pro iOS zařízení (iPad) - funguje v Safari, ale ne vždy v webových aplikacích
 const printAgentUrl = 'http://lootealetenska.local:8000';  // S .local pro iOS
+
+// ✅ Alternativa - IP adresa (vždy funguje, ale může se změnit)
+const printAgentUrl = 'http://192.168.1.100:8000';  // IP adresa PC
 
 // ❌ ŠPATNĚ - nebude fungovat z webové aplikace nebo iPadu
 const printAgentUrl = 'http://localhost:8000';
 ```
+
+**⚠️ DŮLEŽITÉ o .local doménách:**
+- `.local` domény používají mDNS/Bonjour pro resolvování
+- **Safari na iPadu** má podporu pro mDNS a `.local` domény fungují
+- **Webové aplikace** (React/Vue/Angular) často **NEMOHOU** resolvovat `.local` domény kvůli bezpečnostním omezením prohlížeče
+- **Řešení:** Pro webové aplikace použijte hostname **BEZ .local** (např. `http://lootealetenska:8000`) nebo IP adresu
 
 **3. Použití IP adresy (pokud hostname nefunguje):**
 ```javascript
@@ -636,15 +714,82 @@ Vrátí doporučenou URL podle typu klienta. Užitečné pro automatickou konfig
     "localhost": "http://localhost:8000"
   },
   "clientType": "web",
-  "message": "Doporučená URL pro web: http://lootealetenska:8000"
+  "message": "Doporučená URL pro web: http://lootealetenska:8000",
+  "note": "⚠️ Pro webové aplikace použijte hostname BEZ .local (funguje spolehlivěji)"
 }
 ```
 
 **Parametry:**
-- `type=web` - Pro webové aplikace (doporučeno)
-- `type=ios` - Pro iOS zařízení (iPad/iPhone)
+- `type=web` - Pro webové aplikace (doporučeno) - vrací hostname **BEZ .local**
+- `type=ios` - Pro iOS zařízení (iPad/iPhone) - vrací hostname **S .local**
 - `type=android` - Pro Android zařízení
 - `type=desktop` - Pro desktop aplikace
+
+### Automatická detekce (nový endpoint)
+```http
+GET /auto-detect?type=web
+GET /auto-detect?type=ios
+```
+
+Vrátí všechny možné URL varianty v **správném pořadí priority**. **DŮLEŽITÉ:** Pro webové aplikace je `.local` na konci, protože často nefunguje!
+
+**Pro webové aplikace (`type=web`):**
+```json
+{
+  "status": "ok",
+  "variants": [
+    "http://lootealetenska:8000",           // 1. BEZ .local (nejlepší pro web!)
+    "http://192.168.1.100:8000",            // 2. IP adresa
+    "http://lootealetenska.local:8000",     // 3. S .local (zkusit jako poslední - často nefunguje!)
+    "http://localhost:8000"                  // 4. Localhost
+  ],
+  "recommended": "http://lootealetenska:8000",
+  "clientType": "web",
+  "message": "Pro webové aplikace zkuste varianty v pořadí priority. .local často NEFUNGUJE v webových aplikacích - použijte hostname bez .local nebo IP adresu.",
+  "usage": {
+    "web": "Použijte: http://lootealetenska:8000 nebo http://192.168.1.100:8000 (NEPOUŽÍVEJTE .local jako první!)",
+    "note": "⚠️ Webové aplikace často NEMOHOU resolvovat .local domény kvůli bezpečnostním omezením prohlížeče."
+  }
+}
+```
+
+**Pro iOS zařízení (`type=ios`):**
+```json
+{
+  "status": "ok",
+  "variants": [
+    "http://lootealetenska.local:8000",     // 1. S .local (funguje na iOS)
+    "http://lootealetenska:8000",           // 2. BEZ .local
+    "http://192.168.1.100:8000",            // 3. IP adresa
+    "http://localhost:8000"                 // 4. Localhost
+  ],
+  "recommended": "http://lootealetenska.local:8000",
+  "clientType": "ios"
+}
+```
+
+### Detekce variant podle hostname
+```http
+GET /detect-variants?hostname=lootealetenska&port=8000&type=web
+```
+
+Vrátí správné pořadí variant pro konkrétní hostname. Užitečné, když POS aplikace zná hostname, ale neví, v jakém pořadí zkoušet:
+```json
+{
+  "status": "ok",
+  "hostname": "lootealetenska",
+  "port": 8000,
+  "clientType": "web",
+  "variants": [
+    "http://lootealetenska:8000",           // 1. BEZ .local (zkusit jako první!)
+    "http://192.168.1.100:8000",            // 2. IP adresa
+    "http://lootealetenska.local:8000"      // 3. S .local (zkusit jako poslední!)
+  ],
+  "recommended": "http://lootealetenska:8000",
+  "message": "Pro webové aplikace zkuste nejdřív: http://lootealetenska:8000 (BEZ .local). .local často nefunguje v webových aplikacích!",
+  "testingInstructions": "Zkuste každou variantu v pořadí a použijte první, která odpoví na /healthcheck endpoint."
+}
+```
 
 ## 🛠️ Správa a diagnostika
 

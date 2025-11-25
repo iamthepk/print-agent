@@ -33,7 +33,76 @@ Content-Type: application/json
 
 **Správné řešení:**
 
-1. **Získejte správnou URL pomocí endpointu:**
+1. **Automatická detekce s fallback (doporučeno):**
+```javascript
+// Získejte správnou URL automaticky - zkusí všechny varianty
+async function getPrintAgentUrl() {
+  const hostname = 'lootealetenska'; // Název PC s print agentem
+  const port = 8000;
+  
+  // Seznam všech možných URL variant (v pořadí priority)
+  const urlVariants = [
+    `http://${hostname}:${port}`,           // 1. Hostname bez .local (nejlepší pro web)
+    `http://lootealetenska.local:${port}`,  // 2. Hostname s .local (funguje na iOS, ale ne vždy v webových aplikacích)
+    // IP adresu byste měli získat z /network-info endpointu
+  ];
+  
+  // Zkuste se připojit k /auto-detect endpointu pro získání všech variant
+  try {
+    const response = await fetch(`http://${hostname}:${port}/auto-detect`);
+    const data = await response.json();
+    
+    if (data.status === 'ok') {
+      // Zkusíme každou variantu, dokud jedna nefunguje
+      for (const url of data.variants) {
+        try {
+          const testResponse = await fetch(`${url}/healthcheck`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(2000) // Timeout 2 sekundy
+          });
+          if (testResponse.ok) {
+            return url; // Našli jsme funkční URL
+          }
+        } catch (e) {
+          // Tato varianta nefunguje, zkusíme další
+          continue;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Nepodařilo se připojit k /auto-detect:', error);
+  }
+  
+  // Fallback: zkusíme varianty ručně
+  for (const url of urlVariants) {
+    try {
+      const testResponse = await fetch(`${url}/healthcheck`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(2000)
+      });
+      if (testResponse.ok) {
+        return url;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+  
+  // Pokud nic nefunguje, vraťme první variantu (hostname bez .local)
+  console.warn('⚠️ Nepodařilo se ověřit připojení, používám výchozí URL');
+  return urlVariants[0];
+}
+
+// Použití
+const printAgentUrl = await getPrintAgentUrl();
+await fetch(`${printAgentUrl}/print-receipt`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(receiptData)
+});
+```
+
+2. **Získejte správnou URL pomocí endpointu:**
 ```javascript
 // Získejte URL print agentu
 const response = await fetch('http://lootealetenska:8000/print-agent-url?type=web');
@@ -41,23 +110,31 @@ const data = await response.json();
 const printAgentUrl = data.url; // např. "http://lootealetenska:8000"
 ```
 
-2. **Nebo použijte hostname přímo:**
+3. **Nebo použijte hostname přímo:**
 ```javascript
-// ✅ Správně pro webovou aplikaci
-const printAgentUrl = 'http://lootealetenska:8000';  // Hostname PC s print agentem
+// ✅ SPRÁVNĚ pro webovou aplikaci (doporučeno)
+const printAgentUrl = 'http://lootealetenska:8000';  // Hostname BEZ .local
 
-// ❌ ŠPATNĚ - nebude fungovat z webové aplikace
+// ⚠️ Pro iOS zařízení (iPad) - funguje v Safari, ale ne vždy v webových aplikacích
+const printAgentUrl = 'http://lootealetenska.local:8000';  // S .local pro iOS
+
+// ✅ Alternativa - IP adresa (vždy funguje, ale může se změnit)
+const printAgentUrl = 'http://192.168.1.100:8000';  // IP adresa PC
+
+// ❌ ŠPATNĚ - nebude fungovat z webové aplikace nebo iPadu
 const printAgentUrl = 'http://localhost:8000';
 ```
 
-3. **Pro iOS zařízení (iPad):**
-```javascript
-const printAgentUrl = 'http://lootealetenska.local:8000';  // S .local pro iOS
-```
+**⚠️ DŮLEŽITÉ o .local doménách:**
+- `.local` domény používají mDNS/Bonjour pro resolvování
+- **Safari na iPadu** má podporu pro mDNS a `.local` domény fungují
+- **Webové aplikace** (React/Vue/Angular) často **NEMOHOU** resolvovat `.local` domény kvůli bezpečnostním omezením prohlížeče
+- **Řešení:** Pro webové aplikace použijte hostname **BEZ .local** (např. `http://lootealetenska:8000`) nebo IP adresu
 
 **Dostupné endpointy pro zjištění URL:**
-- `GET /print-agent-url?type=web` - Pro webové aplikace
-- `GET /print-agent-url?type=ios` - Pro iOS zařízení
+- `GET /auto-detect` - **NOVÝ** - Vrátí všechny varianty URL v pořadí priority (doporučeno)
+- `GET /print-agent-url?type=web` - Pro webové aplikace (vrací hostname BEZ .local)
+- `GET /print-agent-url?type=ios` - Pro iOS zařízení (vrací hostname S .local)
 - `GET /network-info` - Kompletní síťové informace
 
 ---

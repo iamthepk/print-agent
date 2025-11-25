@@ -419,6 +419,7 @@ app.get('/print-agent-url', async (req, res) => {
         const clientType = req.query.type || 'web'; // 'web', 'ios', 'android', 'desktop'
 
         let recommendedUrl;
+        // Pro webové aplikace NEPOUŽÍVÁME .local, protože to často nefunguje
         switch (clientType) {
             case 'ios':
                 recommendedUrl = `http://${hostname}.local:${port}`;
@@ -426,7 +427,8 @@ app.get('/print-agent-url', async (req, res) => {
             case 'web':
             case 'android':
             default:
-                // Pro webové aplikace použijeme hostname nebo IP
+                // Pro webové aplikace použijeme hostname BEZ .local (funguje lépe)
+                // Pokud hostname nefunguje, použijeme IP adresu
                 recommendedUrl = `http://${hostname}:${port}`;
                 break;
         }
@@ -441,10 +443,123 @@ app.get('/print-agent-url', async (req, res) => {
                 localhost: `http://localhost:${port}`
             },
             clientType: clientType,
-            message: `Doporučená URL pro ${clientType}: ${recommendedUrl}`
+            message: `Doporučená URL pro ${clientType}: ${recommendedUrl}`,
+            note: clientType === 'web' 
+                ? '⚠️ Pro webové aplikace použijte hostname BEZ .local (funguje spolehlivěji)'
+                : undefined
         });
     } catch (e) {
         console.error('❌ Chyba při zjišťování URL:', e.message);
+        res.status(500).json({ status: 'error', message: e.message });
+    }
+})
+
+// Nový endpoint pro automatickou detekci - vrátí všechny varianty v správném pořadí priority
+// Tento endpoint je určen pro POS aplikace, které chtějí automaticky najít print agenta
+// DŮLEŽITÉ: Pro webové aplikace je .local na konci, protože často nefunguje!
+app.get('/auto-detect', async (req, res) => {
+    try {
+        const localIP = await getLocalIPAddress();
+        const hostname = await getHostname();
+        const port = PORT;
+        const clientType = req.query.type || 'web'; // 'web', 'ios', 'android'
+        
+        let urlVariants;
+        
+        if (clientType === 'ios') {
+            // Pro iOS: .local funguje, takže je na začátku
+            urlVariants = [
+                `http://${hostname}.local:${port}`,     // 1. Hostname s .local (funguje na iOS)
+                `http://${hostname}:${port}`,            // 2. Hostname bez .local
+                `http://${localIP}:${port}`,             // 3. IP adresa
+                `http://localhost:${port}`               // 4. Localhost
+            ];
+        } else {
+            // Pro webové aplikace: .local často NEFUNGUJE, takže je na konci!
+            urlVariants = [
+                `http://${hostname}:${port}`,            // 1. Hostname bez .local (nejlepší pro web)
+                `http://${localIP}:${port}`,             // 2. IP adresa (vždy funguje)
+                `http://${hostname}.local:${port}`,      // 3. Hostname s .local (zkusit jako poslední - často nefunguje v webových aplikacích!)
+                `http://localhost:${port}`               // 4. Localhost (jen lokálně)
+            ];
+        }
+
+        res.json({
+            status: 'ok',
+            variants: urlVariants,
+            recommended: urlVariants[0],
+            clientType: clientType,
+            message: clientType === 'ios' 
+                ? 'Pro iOS zkuste varianty v pořadí priority. .local funguje na iOS zařízeních.'
+                : 'Pro webové aplikace zkuste varianty v pořadí priority. .local často NEFUNGUJE v webových aplikacích - použijte hostname bez .local nebo IP adresu.',
+            usage: {
+                web: `Použijte: ${urlVariants[0]} nebo ${urlVariants[1]} (NEPOUŽÍVEJTE .local jako první!)`,
+                ios: `Použijte: ${urlVariants[0]} nebo ${urlVariants[1]}`,
+                note: '⚠️ Webové aplikace často NEMOHOU resolvovat .local domény kvůli bezpečnostním omezením prohlížeče. Použijte hostname BEZ .local nebo IP adresu.'
+            },
+            testingOrder: 'Zkuste varianty v tomto pořadí a použijte první, která funguje.'
+        });
+    } catch (e) {
+        console.error('❌ Chyba při automatické detekci:', e.message);
+        res.status(500).json({ status: 'error', message: e.message });
+    }
+})
+
+// Endpoint pro získání správného pořadí testování URL variant podle hostname a portu
+// Užitečné, když POS aplikace zná hostname, ale neví, v jakém pořadí zkoušet varianty
+app.get('/detect-variants', async (req, res) => {
+    try {
+        const hostname = req.query.hostname || await getHostname();
+        const port = req.query.port || PORT;
+        const clientType = req.query.type || 'web'; // 'web', 'ios', 'android'
+        
+        // Získáme IP adresu (pokud je to náš hostname)
+        let localIP = null;
+        try {
+            const currentHostname = await getHostname();
+            if (hostname === currentHostname) {
+                localIP = await getLocalIPAddress();
+            }
+        } catch (e) {
+            // Ignorujeme chybu
+        }
+        
+        let urlVariants;
+        
+        if (clientType === 'ios') {
+            // Pro iOS: .local funguje
+            urlVariants = [
+                `http://${hostname}.local:${port}`,
+                `http://${hostname}:${port}`,
+            ];
+            if (localIP) {
+                urlVariants.push(`http://${localIP}:${port}`);
+            }
+        } else {
+            // Pro webové aplikace: .local často NEFUNGUJE - je na konci!
+            urlVariants = [
+                `http://${hostname}:${port}`,            // 1. BEZ .local (nejlepší pro web)
+            ];
+            if (localIP) {
+                urlVariants.push(`http://${localIP}:${port}`); // 2. IP adresa
+            }
+            urlVariants.push(`http://${hostname}.local:${port}`); // 3. S .local (zkusit jako poslední!)
+        }
+
+        res.json({
+            status: 'ok',
+            hostname: hostname,
+            port: port,
+            clientType: clientType,
+            variants: urlVariants,
+            recommended: urlVariants[0],
+            message: clientType === 'web' 
+                ? `Pro webové aplikace zkuste nejdřív: ${urlVariants[0]} (BEZ .local). .local často nefunguje v webových aplikacích!`
+                : `Pro iOS zkuste nejdřív: ${urlVariants[0]}`,
+            testingInstructions: 'Zkuste každou variantu v pořadí a použijte první, která odpoví na /healthcheck endpoint.'
+        });
+    } catch (e) {
+        console.error('❌ Chyba při získávání variant:', e.message);
         res.status(500).json({ status: 'error', message: e.message });
     }
 })
