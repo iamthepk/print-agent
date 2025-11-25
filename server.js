@@ -22,8 +22,8 @@ app.use('/assets', express.static(path.join(__dirname, 'assets')))
 const RECEIPT_PRINTER = process.env.RECEIPT_PRINTER || 'EPSON TM-T20III Receipt'
 const STICKER_PRINTER = process.env.STICKER_PRINTER || 'Brother QL-700'
 
-console.log('📄 RECEIPT_PRINTER:', RECEIPT_PRINTER)
-console.log('🏷️ STICKER_PRINTER:', STICKER_PRINTER)
+console.log('RECEIPT_PRINTER:', RECEIPT_PRINTER)
+console.log('STICKER_PRINTER:', STICKER_PRINTER)
 
 // Přidání základní HTML stránky
 app.get('/', (req, res) => {
@@ -130,38 +130,12 @@ app.get('/', (req, res) => {
                     margin: 5px 0;
                     color: #666;
                 }
-                .network-info {
-                    margin-top: 20px;
-                    padding: 15px;
-                    background: #e7f3ff;
-                    border-radius: 5px;
-                    border-left: 4px solid #2196F3;
-                    text-align: left;
-                }
-                .network-info h4 {
-                    margin-bottom: 10px;
-                    color: #1976D2;
-                    font-size: 14px;
-                }
-                .network-info code {
-                    background: #fff;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                    font-family: 'Courier New', monospace;
-                    font-size: 13px;
-                    color: #d32f2f;
-                }
             </style>
         </head>
         <body>
             <div class="container">
                 <img src="${logoPath}" alt="LOOTEA Logo" class="logo" onerror="this.style.display='none';">
                 <div class="title">PRINT AGENT</div>
-                
-                <div class="network-info" id="network-info">
-                    <h4>🌐 Síťové informace:</h4>
-                    <p style="margin: 5px 0; font-size: 13px;">Načítám...</p>
-                </div>
                 
                 <div class="buttons">
                     <button onclick="testDrawer(event)">🧪 Testovat pokladní zásuvku</button>
@@ -179,35 +153,6 @@ app.get('/', (req, res) => {
                 </div>
                 
                 <script>
-                    // Načtení síťových informací při načtení stránky
-                    async function loadNetworkInfo() {
-                        try {
-                            const response = await fetch('/network-info');
-                            const data = await response.json();
-                            
-                            if (data.status === 'ok') {
-                                const networkInfoDiv = document.getElementById('network-info');
-                                networkInfoDiv.innerHTML = \`
-                                    <h4>🌐 Síťové informace:</h4>
-                                    <p style="margin: 5px 0; font-size: 13px;">
-                                        <strong>📍 Lokálně:</strong> <code>\${data.localhost}</code><br>
-                                        <strong>🍎 Pro iPad (iOS):</strong> <code style="background: #fff3cd; padding: 4px 8px; border-radius: 4px; font-weight: bold;">\${data.hostnameLocal}</code><br>
-                                        <strong>🌐 Hostname:</strong> <code>\${data.hostnameUrl}</code><br>
-                                        <strong>🔢 IP adresa:</strong> <code>\${data.network}</code>
-                                    </p>
-                                    <p style="margin: 10px 0 0 0; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 12px; color: #856404;">
-                                        <strong>⚠️ DŮLEŽITÉ:</strong> Použijte <code>http://</code> (ne https://) a port <code>\${data.port}</code> (ne \${data.port.toString().slice(0, -1)})
-                                    </p>
-                                \`;
-                            }
-                        } catch (error) {
-                            console.error('Chyba při načítání síťových informací:', error);
-                        }
-                    }
-                    
-                    // Načteme síťové informace při načtení stránky
-                    loadNetworkInfo();
-                    
                     async function testDrawer(event) {
                         const button = event.target;
                         const resultDiv = document.getElementById('result');
@@ -389,7 +334,7 @@ app.post('/print-receipt', async (req, res) => {
         await printReceipt(req.body)
         res.json({ status: 'ok' })
     } catch (e) {
-        console.error('❌ Chyba při tisku účtenky:', e.message)
+        console.error('Chyba pri tisku uctenky:', e.message)
         res.status(500).json({ status: 'error', message: e.message })
     }
 })
@@ -400,7 +345,7 @@ app.post('/print-sticker', async (req, res) => {
         await printSticker(req.body)
         res.json({ status: 'ok', message: 'Štítek odeslán k tisku' })
     } catch (e) {
-        console.error('❌ Chyba při tisku štítku:', e.message)
+        console.error('Chyba pri tisku stitku:', e.message)
         res.status(500).json({ status: 'error', message: e.message })
     }
 })
@@ -449,7 +394,7 @@ app.get('/print-agent-url', async (req, res) => {
                 : undefined
         });
     } catch (e) {
-        console.error('❌ Chyba při zjišťování URL:', e.message);
+        console.error('Chyba pri zjistovani URL:', e.message);
         res.status(500).json({ status: 'error', message: e.message });
     }
 })
@@ -500,7 +445,7 @@ app.get('/auto-detect', async (req, res) => {
             testingOrder: 'Zkuste varianty v tomto pořadí a použijte první, která funguje.'
         });
     } catch (e) {
-        console.error('❌ Chyba při automatické detekci:', e.message);
+        console.error('Chyba pri automaticke detekci:', e.message);
         res.status(500).json({ status: 'error', message: e.message });
     }
 })
@@ -559,7 +504,7 @@ app.get('/detect-variants', async (req, res) => {
             testingInstructions: 'Zkuste každou variantu v pořadí a použijte první, která odpoví na /healthcheck endpoint.'
         });
     } catch (e) {
-        console.error('❌ Chyba při získávání variant:', e.message);
+        console.error('Chyba pri ziskavani variant:', e.message);
         res.status(500).json({ status: 'error', message: e.message });
     }
 })
@@ -583,7 +528,7 @@ app.get('/network-info', async (req, res) => {
             important: `⚠️ DŮLEŽITÉ: Použijte http:// (ne https://) a port ${port} (ne ${port.toString().slice(0, -1)})`
         });
     } catch (e) {
-        console.error('❌ Chyba při zjišťování síťových informací:', e.message);
+        console.error('Chyba pri zjistovani sitovych informaci:', e.message);
         res.status(500).json({ status: 'error', message: e.message });
     }
 })
@@ -658,7 +603,7 @@ app.get('/check-printer', async (req, res) => {
             message: message
         });
     } catch (e) {
-        console.error('❌ Chyba při kontrole tiskárny:', e.message);
+        console.error('Chyba pri kontrole tiskarny:', e.message);
         res.status(500).json({ status: 'error', message: e.message });
     }
 })
@@ -687,7 +632,7 @@ app.post('/restart-server', async (req, res) => {
                 cwd: scriptPath
             }, (error) => {
                 if (error) {
-                    console.error('❌ Chyba při spouštění restart scriptu:', error);
+                    console.error('Chyba pri spousteni restart scriptu:', error);
                 }
                 // Ukončíme aktuální proces - restart script ho restartuje
                 setTimeout(() => {
@@ -696,7 +641,7 @@ app.post('/restart-server', async (req, res) => {
             });
         }, 500);
     } catch (e) {
-        console.error('❌ Chyba při restartu serveru:', e.message);
+        console.error('Chyba pri restartu serveru:', e.message);
         res.status(500).json({ status: 'error', message: e.message });
     }
 });
@@ -727,7 +672,7 @@ app.get('/ngrok-url', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('❌ Chyba při získávání ngrok URL:', error.message);
+        console.error('Chyba pri ziskavani ngrok URL:', error.message);
         res.status(500).json({
             status: 'error',
             message: error.message
@@ -738,8 +683,8 @@ app.get('/ngrok-url', async (req, res) => {
 // Endpoint pro otevření pokladní zásuvky
 app.post('/open-drawer', async (req, res) => {
     try {
-        console.log('💰 Pokus o otevření pokladní zásuvky...')
-        console.log('🖨️ Používaná tiskárna:', RECEIPT_PRINTER)
+        console.log('Pokus o otevreni pokladni zasuvky...')
+        console.log('Pouzivana tiskarna:', RECEIPT_PRINTER)
 
         const { exec } = await import('child_process');
         const fs = await import('fs');
@@ -767,17 +712,17 @@ app.post('/open-drawer', async (req, res) => {
 
         exec(command, { windowsHide: true }, (error, stdout, stderr) => {
             console.log('📋 Výstup příkazu:', stdout);
-            if (stderr) console.log('⚠️ Chybové hlášky:', stderr);
+            if (stderr) console.log('Chybove hlasky:', stderr);
 
             // Smažeme dočasný soubor
             try {
                 fs.unlinkSync(tempFile);
             } catch (cleanupError) {
-                console.warn('⚠️ Nepodařilo se smazat dočasný soubor:', cleanupError.message);
+                console.warn('Nepodarilo se smazat docasny soubor:', cleanupError.message);
             }
 
             if (error) {
-                console.error('❌ Chyba při otevírání zásuvky:', error);
+                console.error('Chyba pri otevirani zasuvky:', error);
                 res.status(500).json({
                     status: 'error',
                     message: `Chyba při otevírání zásuvky: ${error.message}`,
@@ -793,7 +738,7 @@ app.post('/open-drawer', async (req, res) => {
 
             // Pokud není chyba, považujeme to za úspěch
             if (!error) {
-                console.log('✅ Pokladní zásuvka úspěšně otevřena');
+                console.log('Pokladni zasuvka uspesne otevrena');
                 res.json({
                     status: 'ok',
                     message: 'Pokladní zásuvka otevřena',
@@ -803,7 +748,7 @@ app.post('/open-drawer', async (req, res) => {
                     }
                 });
             } else {
-                console.error('❌ Chyba při otevírání zásuvky:', stdout);
+                console.error('Chyba pri otevirani zasuvky:', stdout);
                 res.status(500).json({
                     status: 'error',
                     message: 'Nepodařilo se otevřít zásuvku',
@@ -816,7 +761,7 @@ app.post('/open-drawer', async (req, res) => {
             }
         });
     } catch (e) {
-        console.error('❌ Chyba při otevírání zásuvky:', e.message);
+        console.error('Chyba pri otevirani zasuvky:', e.message);
         res.status(500).json({ status: 'error', message: e.message });
     }
 });
@@ -912,41 +857,35 @@ async function startServer() {
             }
 
             if (ngrokUrl) {
-                console.log(`   🌐 Ngrok HTTPS: ${ngrokUrl}`)
-                console.log(`   💡 POS aplikace může použít tuto URL pro komunikaci`)
+                console.log(`   Ngrok HTTPS: ${ngrokUrl}`)
+                console.log(`   POS aplikace muze pouzit tuto URL pro komunikaci`)
             } else {
-                console.log(`   ⚠️  Ngrok URL není dostupná (ngrok možná neběží)`)
+                console.log(`   Ngrok URL neni dostupna (ngrok mozna nebezi)`)
             }
         }, 3000); // Počkáme 3 sekundy
     };
 
     if (!isPortAvailable) {
-        console.log(`⚠️ Port ${PORT} je už obsazený. Zkouším port ${PORT + 1}...`);
+        console.log(`Port ${PORT} je uz obsazeny. Zkousim port ${PORT + 1}...`);
         const altPort = PORT + 1;
         const isAltPortAvailable = await checkPort(altPort);
 
         if (isAltPortAvailable) {
             app.listen(altPort, HOST, () => {
-                console.log(`🚀 Print agent běží na:`)
-                console.log(`   📍 Lokálně: http://localhost:${altPort}`)
-                console.log(`   🍎 Pro iPad (iOS): http://${hostname}.local:${altPort}`)
-                console.log(`   🌐 Hostname: http://${hostname}:${altPort}`)
-                console.log(`   🔢 IP adresa: http://${localIP}:${altPort}`)
-                console.log(`   ⚠️  DŮLEŽITÉ: Použijte http:// (ne https://) a port ${altPort} (ne ${altPort.toString().slice(0, -1)})`)
+                console.log(`Print agent bezi na:`)
+                console.log(`   Lokalne: http://localhost:${altPort}`)
+                console.log(`   Hostname: http://${hostname}:${altPort}`)
                 displayNgrokUrl();
             });
         } else {
-            console.error(`❌ Ani port ${PORT} ani ${altPort} není dostupný. Ukončuji aplikaci.`);
+            console.error(`Ani port ${PORT} ani ${altPort} neni dostupny. Ukoncuji aplikaci.`);
             process.exit(1);
         }
     } else {
         app.listen(PORT, HOST, () => {
-            console.log(`🚀 Print agent běží na:`)
-            console.log(`   📍 Lokálně: http://localhost:${PORT}`)
-            console.log(`   🍎 Pro iPad (iOS): http://${hostname}.local:${PORT}`)
-            console.log(`   🌐 Hostname: http://${hostname}:${PORT}`)
-            console.log(`   🔢 IP adresa: http://${localIP}:${PORT}`)
-            console.log(`   ⚠️  DŮLEŽITÉ: Použijte http:// (ne https://) a port ${PORT} (ne ${PORT.toString().slice(0, -1)})`)
+            console.log(`Print agent bezi na:`)
+            console.log(`   Lokalne: http://localhost:${PORT}`)
+            console.log(`   Hostname: http://${hostname}:${PORT}`)
             displayNgrokUrl();
         });
     }

@@ -1,5 +1,5 @@
-# PowerShell skript pro spuštění ngroku a získání HTTPS URL
-# Tento skript spustí ngrok tunel k lokálnímu serveru na portu 8000
+# PowerShell skript pro spusteni ngroku a ziskani HTTPS URL
+# Tento skript spusti ngrok tunel k lokalnimu serveru na portu 8000
 
 param(
     [int]$Port = 8000,
@@ -9,18 +9,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "🚀 Spouštím ngrok tunel..." -ForegroundColor Cyan
+Write-Host "Spoustim ngrok tunel..." -ForegroundColor Cyan
 
 # Zkontrolujeme, zda ngrok je v PATH
 $ngrokPath = Get-Command ngrok -ErrorAction SilentlyContinue
 if (-not $ngrokPath) {
-    Write-Host "❌ Ngrok nebyl nalezen v PATH. Ujistěte se, že je ngrok nainstalován." -ForegroundColor Red
-    Write-Host "💡 Instalace: https://ngrok.com/download" -ForegroundColor Yellow
+    Write-Host "ERROR: Ngrok nebyl nalezen v PATH. Ujistete se, ze je ngrok nainstalovan." -ForegroundColor Red
+    Write-Host "INFO: Instalace: https://ngrok.com/download" -ForegroundColor Yellow
     exit 1
 }
 
-# Zkontrolujeme, zda server běží na portu 8000
-Write-Host "🔍 Kontroluji, zda server běží na portu $Port..." -ForegroundColor Yellow
+# Zkontrolujeme, zda server bezi na portu 8000
+Write-Host "Kontroluji, zda server bezi na portu $Port..." -ForegroundColor Yellow
 $serverRunning = $false
 for ($i = 0; $i -lt $MaxRetries; $i++) {
     try {
@@ -29,7 +29,8 @@ for ($i = 0; $i -lt $MaxRetries; $i++) {
             $serverRunning = $true
             break
         }
-    } catch {
+    }
+    catch {
         # Ignorujeme chyby
     }
     if ($i -lt $MaxRetries - 1) {
@@ -38,32 +39,33 @@ for ($i = 0; $i -lt $MaxRetries; $i++) {
 }
 
 if (-not $serverRunning) {
-    Write-Host "⚠️ Server na portu $Port ještě neběží. Spouštím ngrok i tak..." -ForegroundColor Yellow
-} else {
-    Write-Host "✅ Server běží na portu $Port" -ForegroundColor Green
+    Write-Host "WARNING: Server na portu $Port jeste nebezi. Spoustim ngrok i tak..." -ForegroundColor Yellow
+}
+else {
+    Write-Host "OK: Server bezi na portu $Port" -ForegroundColor Green
 }
 
-# Zkontrolujeme, zda už ngrok neběží
+# Zkontrolujeme, zda uz ngrok nebezi
 $ngrokProcess = Get-Process -Name ngrok -ErrorAction SilentlyContinue
 if ($ngrokProcess) {
-    Write-Host "⚠️ Ngrok už běží. Ukončuji starý proces..." -ForegroundColor Yellow
+    Write-Host "WARNING: Ngrok uz bezi. Ukoncuji stary proces..." -ForegroundColor Yellow
     Stop-Process -Name ngrok -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
 }
 
-# Spustíme ngrok na pozadí (BEZ autentizace - důležité!)
-Write-Host "🌐 Spouštím ngrok http $Port..." -ForegroundColor Cyan
+# Spustime ngrok na pozadi (BEZ autentizace - dulezite!)
+Write-Host "Spoustim ngrok http $Port..." -ForegroundColor Cyan
 $ngrokProcess = Start-Process -FilePath "ngrok" -ArgumentList "http $Port" -WindowStyle Hidden -PassThru
 
 if (-not $ngrokProcess) {
-    Write-Host "❌ Nepodařilo se spustit ngrok" -ForegroundColor Red
+    Write-Host "ERROR: Nepodarilo se spustit ngrok" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "⏳ Čekám na spuštění ngroku..." -ForegroundColor Yellow
+Write-Host "Cekam na spusteni ngroku..." -ForegroundColor Yellow
 Start-Sleep -Seconds 3
 
-# Zkusíme získat URL z ngrok API
+# Zkusime ziskat URL z ngrok API
 $ngrokUrl = $null
 $apiUrl = "http://127.0.0.1:4040/api/tunnels"
 
@@ -76,8 +78,9 @@ for ($i = 0; $i -lt $MaxRetries; $i++) {
             $ngrokUrl = $httpsTunnel.public_url
             break
         }
-    } catch {
-        # Ignorujeme chyby a zkusíme znovu
+    }
+    catch {
+        # Ignorujeme chyby a zkusime znovu
     }
     
     if ($i -lt $MaxRetries - 1) {
@@ -87,27 +90,28 @@ for ($i = 0; $i -lt $MaxRetries; $i++) {
 
 if ($ngrokUrl) {
     Write-Host ""
-    Write-Host "✅ Ngrok tunel je aktivní!" -ForegroundColor Green
-    Write-Host "🌐 HTTPS URL: $ngrokUrl" -ForegroundColor Cyan
+    Write-Host "OK: Ngrok tunel je aktivni!" -ForegroundColor Green
+    Write-Host "HTTPS URL: $ngrokUrl" -ForegroundColor Cyan
     Write-Host ""
     
-    # Uložíme URL do souboru
-    $urlFile = Join-Path $PSScriptRoot ".." "ngrok-url.txt"
+    # Ulozime URL do souboru
+    $urlFile = Join-Path (Split-Path $PSScriptRoot -Parent) "ngrok-url.txt"
     $ngrokUrl | Out-File -FilePath $urlFile -Encoding UTF8 -NoNewline
-    Write-Host "💾 URL uložena do: $urlFile" -ForegroundColor Gray
+    Write-Host "URL ulozena do: $urlFile" -ForegroundColor Gray
     
-    # Zkusíme zkopírovat URL do schránky (volitelné)
+    # Zkusime zkopirovat URL do schranky (volitelne)
     try {
         Set-Clipboard -Value $ngrokUrl
-        Write-Host "📋 URL zkopírována do schránky" -ForegroundColor Gray
-    } catch {
-        # Ignorujeme chyby při kopírování
+        Write-Host "URL zkopirovana do schranky" -ForegroundColor Gray
+    }
+    catch {
+        # Ignorujeme chyby pri kopirovani
     }
     
     return $ngrokUrl
-} else {
-    Write-Host "⚠️ Nepodařilo se získat ngrok URL z API" -ForegroundColor Yellow
-    Write-Host "💡 Ngrok může být stále spouštěn. Zkuste otevřít http://127.0.0.1:4040 pro webové rozhraní" -ForegroundColor Yellow
+}
+else {
+    Write-Host "WARNING: Nepodarilo se ziskat ngrok URL z API" -ForegroundColor Yellow
+    Write-Host "INFO: Ngrok muze byt stale spousten. Zkuste otevrit http://127.0.0.1:4040" -ForegroundColor Yellow
     return $null
 }
-

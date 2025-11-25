@@ -35,19 +35,14 @@ npm start
 start.bat
 ```
 
-**Silent spuštění (na pozadí):**
-```bash
-# Silent spuštění (doporučeno pro produkci)
-scripts\start-silent.bat
+**Jak to funguje:**
+1. Spustí se Print Agent Server na portu 8000
+2. Počká se 3 sekundy, až se server spustí
+3. Automaticky se spustí ngrok tunel k portu 8000
+4. Ngrok vytvoří HTTPS URL (např. `[ngrok-url-redacted]`)
+5. URL se zobrazí v konzoli a uloží do `ngrok-url.txt`
 
-# Nebo pomocí VBS (nejtišší)
-scripts\start-silent.vbs
-```
-
-**Interaktivní správce:**
-```bash
-scripts\server-manager.bat
-```
+**Poznámka:** Oba příkazy (`npm start` i `start.bat`) dělají totéž - spustí server i ngrok automaticky.
 
 ### Restart serveru
 
@@ -65,7 +60,7 @@ Tento příkaz automaticky:
 
 **Pomocí skriptu:**
 ```bash
-scripts\stop-server.bat
+scripts\stop.bat
 ```
 
 **Manuálně (PowerShell):**
@@ -84,13 +79,12 @@ for /f "tokens=5" %a in ('netstat -ano ^| findstr ":800"') do taskkill /PID %a /
 
 | Příkaz | Popis |
 |--------|-------|
-| `npm start` | Spustí server v produkčním módu |
-| `npm restart` | Restartuje server (zastaví a znovu spustí) |
-| `start.bat` | Spustí server pomocí nejlepšího dostupného způsobu |
-| `scripts\start-silent.bat` | Spustí server na pozadí (silent) |
-| `scripts\stop-server.bat` | Zastaví běžící server |
-| `scripts\server-manager.bat` | Interaktivní správce serveru |
-| `scripts\restart-server.bat` | Pomocný skript pro restart (volá se z `npm restart`) |
+| `npm start` | Spustí server i ngrok automaticky |
+| `start.bat` | Spustí server i ngrok automaticky (stejné jako `npm start`) |
+| `scripts\stop.bat` | Zastaví server i ngrok |
+| `scripts\restart.bat` | Restartuje server i ngrok |
+| `scripts\install.bat` | Instalace jako Windows služba (spustí se při startu PC) |
+| `scripts\uninstall.bat` | Odstranění Windows služby |
 
 ## 🔄 Jak to funguje
 
@@ -102,6 +96,21 @@ Print Agent Server je Node.js aplikace, která:
 3. **Generuje PDF dokumenty** pro účtenky pomocí PDFKit
 4. **Tiskne přes SumatraPDF** na termální tiskárnu
 5. **Komunikuje s Brother QL-700** pro tisk štítků pomocí Puppeteer
+
+### Spuštění a ngrok
+
+**Automatické spuštění ngroku:**
+- Při spuštění pomocí `npm start` nebo `start.bat` se automaticky:
+  1. Spustí Print Agent Server na portu 8000
+  2. Počká se, až server běží (kontrola portu)
+  3. Spustí se ngrok tunel: `ngrok http 8000`
+  4. Získá se HTTPS URL z ngrok API (`http://127.0.0.1:4040/api/tunnels`)
+  5. URL se zobrazí v konzoli a uloží do `ngrok-url.txt`
+
+**Důležité:**
+- Ngrok se spouští **BEZ autentizace** (důležité pro POS aplikace)
+- Ngrok URL se může měnit při každém restartu (free plán)
+- URL lze získat také přes API endpoint: `GET /ngrok-url`
 
 ### Možnosti připojení
 

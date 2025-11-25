@@ -5,8 +5,8 @@
   "description": "Lokální print agent pro POS (Brother QL-700 + Epson TM-T20III)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "restart": "scripts\\restart-server.bat"
+    "start": "start.bat",
+    "restart": "scripts\\restart.bat"
   },
   "dependencies": {
     "cors": "^2.8.5",

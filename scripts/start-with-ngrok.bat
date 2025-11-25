@@ -2,7 +2,7 @@
 REM Wrapper skript pro spuštění Print Agent Server s ngrok
 REM Tento skript se používá pro Windows službu a automatické spuštění
 
-cd /d "C:\Users\team\Documents\GitHub\print-agent"
+cd /d "%~dp0.."
 
 REM Spustíme Node.js server
 start /B "" "C:\Program Files\nodejs\node.exe" server.js
