@@ -191,8 +191,12 @@ app.get('/', (req, res) => {
                                     <h4>🌐 Síťové informace:</h4>
                                     <p style="margin: 5px 0; font-size: 13px;">
                                         <strong>📍 Lokálně:</strong> <code>\${data.localhost}</code><br>
-                                        <strong>🌐 V síti:</strong> <code>\${data.network}</code><br>
-                                        <strong>💡 Pro iPad:</strong> <code>\${data.network}</code>
+                                        <strong>🍎 Pro iPad (iOS):</strong> <code style="background: #fff3cd; padding: 4px 8px; border-radius: 4px; font-weight: bold;">\${data.hostnameLocal}</code><br>
+                                        <strong>🌐 Hostname:</strong> <code>\${data.hostnameUrl}</code><br>
+                                        <strong>🔢 IP adresa:</strong> <code>\${data.network}</code>
+                                    </p>
+                                    <p style="margin: 10px 0 0 0; padding: 8px; background: #fff3cd; border-radius: 4px; font-size: 12px; color: #856404;">
+                                        <strong>⚠️ DŮLEŽITÉ:</strong> Použijte <code>http://</code> (ne https://) a port <code>\${data.port}</code> (ne \${data.port.toString().slice(0, -1)})
                                     </p>
                                 \`;
                             }
@@ -405,18 +409,63 @@ app.get('/healthcheck', (req, res) => {
     res.json({ status: 'ok' })
 })
 
+// Endpoint pro získání URL print agentu (pro POS aplikace)
+// Tento endpoint vrací doporučenou URL podle typu klienta
+app.get('/print-agent-url', async (req, res) => {
+    try {
+        const localIP = await getLocalIPAddress();
+        const hostname = await getHostname();
+        const port = PORT;
+        const clientType = req.query.type || 'web'; // 'web', 'ios', 'android', 'desktop'
+
+        let recommendedUrl;
+        switch (clientType) {
+            case 'ios':
+                recommendedUrl = `http://${hostname}.local:${port}`;
+                break;
+            case 'web':
+            case 'android':
+            default:
+                // Pro webové aplikace použijeme hostname nebo IP
+                recommendedUrl = `http://${hostname}:${port}`;
+                break;
+        }
+
+        res.json({
+            status: 'ok',
+            url: recommendedUrl,
+            alternatives: {
+                hostname: `http://${hostname}:${port}`,
+                hostnameLocal: `http://${hostname}.local:${port}`,
+                ipAddress: `http://${localIP}:${port}`,
+                localhost: `http://localhost:${port}`
+            },
+            clientType: clientType,
+            message: `Doporučená URL pro ${clientType}: ${recommendedUrl}`
+        });
+    } catch (e) {
+        console.error('❌ Chyba při zjišťování URL:', e.message);
+        res.status(500).json({ status: 'error', message: e.message });
+    }
+})
+
 // Endpoint pro zjištění IP adresy serveru
 app.get('/network-info', async (req, res) => {
     try {
         const localIP = await getLocalIPAddress();
+        const hostname = await getHostname();
         const port = PORT;
         res.json({
             status: 'ok',
             localhost: `http://localhost:${port}`,
             network: `http://${localIP}:${port}`,
+            hostnameUrl: `http://${hostname}:${port}`,
+            hostnameLocal: `http://${hostname}.local:${port}`,
             ipAddress: localIP,
+            hostname: hostname,
             port: port,
-            message: `Pro přístup z iPadu použijte: http://${localIP}:${port}`
+            message: `Pro přístup z iPadu použijte: http://${hostname}.local:${port} (iOS) nebo http://${hostname}:${port} nebo http://${localIP}:${port}`,
+            important: `⚠️ DŮLEŽITÉ: Použijte http:// (ne https://) a port ${port} (ne ${port.toString().slice(0, -1)})`
         });
     } catch (e) {
         console.error('❌ Chyba při zjišťování síťových informací:', e.message);
@@ -626,6 +675,12 @@ app.post('/open-drawer', async (req, res) => {
 const PORT = process.env.PORT || 8000
 const HOST = process.env.HOST || '0.0.0.0' // Poslouchá na všech síťových rozhraních
 
+// Funkce pro zjištění hostname počítače
+async function getHostname() {
+    const os = await import('os');
+    return os.hostname();
+}
+
 // Funkce pro zjištění IP adresy PC v síti
 async function getLocalIPAddress() {
     const os = await import('os');
@@ -662,6 +717,7 @@ async function checkPort(port) {
 async function startServer() {
     const isPortAvailable = await checkPort(PORT);
     const localIP = await getLocalIPAddress();
+    const hostname = await getHostname();
 
     if (!isPortAvailable) {
         console.log(`⚠️ Port ${PORT} je už obsazený. Zkouším port ${PORT + 1}...`);
@@ -672,8 +728,10 @@ async function startServer() {
             app.listen(altPort, HOST, () => {
                 console.log(`🚀 Print agent běží na:`)
                 console.log(`   📍 Lokálně: http://localhost:${altPort}`)
-                console.log(`   🌐 V síti:  http://${localIP}:${altPort}`)
-                console.log(`   💡 Pro iPad použijte: http://${localIP}:${altPort}`)
+                console.log(`   🍎 Pro iPad (iOS): http://${hostname}.local:${altPort}`)
+                console.log(`   🌐 Hostname: http://${hostname}:${altPort}`)
+                console.log(`   🔢 IP adresa: http://${localIP}:${altPort}`)
+                console.log(`   ⚠️  DŮLEŽITÉ: Použijte http:// (ne https://) a port ${altPort} (ne ${altPort.toString().slice(0, -1)})`)
             });
         } else {
             console.error(`❌ Ani port ${PORT} ani ${altPort} není dostupný. Ukončuji aplikaci.`);
@@ -683,8 +741,10 @@ async function startServer() {
         app.listen(PORT, HOST, () => {
             console.log(`🚀 Print agent běží na:`)
             console.log(`   📍 Lokálně: http://localhost:${PORT}`)
-            console.log(`   🌐 V síti:  http://${localIP}:${PORT}`)
-            console.log(`   💡 Pro iPad použijte: http://${localIP}:${PORT}`)
+            console.log(`   🍎 Pro iPad (iOS): http://${hostname}.local:${PORT}`)
+            console.log(`   🌐 Hostname: http://${hostname}:${PORT}`)
+            console.log(`   🔢 IP adresa: http://${localIP}:${PORT}`)
+            console.log(`   ⚠️  DŮLEŽITÉ: Použijte http:// (ne https://) a port ${PORT} (ne ${PORT.toString().slice(0, -1)})`)
         });
     }
 }

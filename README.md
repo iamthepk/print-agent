@@ -177,20 +177,62 @@ New-NetFirewallRule -DisplayName "Print Agent" -Direction Inbound -LocalPort 800
 3. Vyberte **Port** → **TCP** → **Specifické místní porty:** `8000,8001`
 4. **Povolit připojení** → Zaškrtněte všechny profily → Dokončit
 
-#### Krok 3: V POS aplikaci na iPadu použijte IP adresu
-Místo `http://localhost:8000` použijte IP adresu vašeho PC:
-```javascript
-// ❌ Špatně (nebude fungovat z iPadu)
-const printAgentUrl = 'http://localhost:8000'
+#### Krok 3: V POS aplikaci použijte správnou adresu
 
-// ✅ Správně (funguje z iPadu)
-const printAgentUrl = 'http://192.168.1.100:8000'  // Nahraďte IP adresou vašeho PC
+**⚠️ DŮLEŽITÉ:** Pro webové POS aplikace (např. `pos.lootea.cz`) **NEPOUŽÍVEJTE** `http://localhost:8000`, protože to se pokusí připojit k localhostu na zařízení uživatele, ne k PC s print agentem!
+
+**Možnosti konfigurace:**
+
+**1. Automatické zjištění URL (doporučeno):**
+```javascript
+// Získejte správnou URL automaticky
+async function getPrintAgentUrl() {
+  try {
+    // Zkuste se připojit k print agentu pomocí hostname
+    const response = await fetch('http://lootealetenska:8000/print-agent-url?type=web');
+    const data = await response.json();
+    return data.url; // Vrátí např. "http://lootealetenska:8000"
+  } catch (error) {
+    // Fallback na hostname
+    return 'http://lootealetenska:8000';
+  }
+}
+
+// Použití
+const printAgentUrl = await getPrintAgentUrl();
+await fetch(`${printAgentUrl}/print-receipt`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(receiptData)
+});
+```
+
+**2. Použití hostname přímo:**
+```javascript
+// ✅ Správně pro webovou aplikaci
+const printAgentUrl = 'http://lootealetenska:8000';  // Hostname PC s print agentem
+
+// ✅ Pro iOS zařízení (iPad)
+const printAgentUrl = 'http://lootealetenska.local:8000';  // S .local pro iOS
+
+// ❌ ŠPATNĚ - nebude fungovat z webové aplikace nebo iPadu
+const printAgentUrl = 'http://localhost:8000';
+```
+
+**3. Použití IP adresy (pokud hostname nefunguje):**
+```javascript
+// ✅ Funguje, ale IP se může změnit při DHCP
+const printAgentUrl = 'http://192.168.1.100:8000';  // Nahraďte IP adresou vašeho PC
 ```
 
 **Příklad v POS aplikaci:**
 ```javascript
-// Tisk účtenky z iPadu
-await fetch('http://192.168.1.100:8000/print-receipt', {
+// Tisk účtenky z webové aplikace nebo iPadu
+const printAgentUrl = 'http://lootealetenska:8000';  // Pro web
+// nebo
+const printAgentUrl = 'http://lootealetenska.local:8000';  // Pro iOS
+
+await fetch(`${printAgentUrl}/print-receipt`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(receiptData)
@@ -567,11 +609,42 @@ Vrátí IP adresu serveru a URL pro přístup z jiných zařízení:
   "status": "ok",
   "localhost": "http://localhost:8000",
   "network": "http://192.168.1.100:8000",
+  "hostnameUrl": "http://lootealetenska:8000",
+  "hostnameLocal": "http://lootealetenska.local:8000",
   "ipAddress": "192.168.1.100",
+  "hostname": "lootealetenska",
   "port": 8000,
-  "message": "Pro přístup z iPadu použijte: http://192.168.1.100:8000"
+  "message": "Pro přístup z iPadu použijte: http://lootealetenska.local:8000 (iOS) nebo http://lootealetenska:8000 nebo http://192.168.1.100:8000"
 }
 ```
+
+### URL pro POS aplikace
+```http
+GET /print-agent-url?type=web
+GET /print-agent-url?type=ios
+```
+
+Vrátí doporučenou URL podle typu klienta. Užitečné pro automatickou konfiguraci POS aplikací:
+```json
+{
+  "status": "ok",
+  "url": "http://lootealetenska:8000",
+  "alternatives": {
+    "hostname": "http://lootealetenska:8000",
+    "hostnameLocal": "http://lootealetenska.local:8000",
+    "ipAddress": "http://192.168.1.100:8000",
+    "localhost": "http://localhost:8000"
+  },
+  "clientType": "web",
+  "message": "Doporučená URL pro web: http://lootealetenska:8000"
+}
+```
+
+**Parametry:**
+- `type=web` - Pro webové aplikace (doporučeno)
+- `type=ios` - Pro iOS zařízení (iPad/iPhone)
+- `type=android` - Pro Android zařízení
+- `type=desktop` - Pro desktop aplikace
 
 ## 🛠️ Správa a diagnostika
 

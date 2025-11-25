@@ -27,6 +27,39 @@ POST http://localhost:8000/print-receipt
 Content-Type: application/json
 ```
 
+### ⚠️ DŮLEŽITÉ: Konfigurace URL pro POS aplikaci
+
+**Pro webové POS aplikace** (např. `pos.lootea.cz`) **NEPOUŽÍVEJTE** `http://localhost:8000`, protože to se pokusí připojit k localhostu na zařízení uživatele, ne k PC s print agentem!
+
+**Správné řešení:**
+
+1. **Získejte správnou URL pomocí endpointu:**
+```javascript
+// Získejte URL print agentu
+const response = await fetch('http://lootealetenska:8000/print-agent-url?type=web');
+const data = await response.json();
+const printAgentUrl = data.url; // např. "http://lootealetenska:8000"
+```
+
+2. **Nebo použijte hostname přímo:**
+```javascript
+// ✅ Správně pro webovou aplikaci
+const printAgentUrl = 'http://lootealetenska:8000';  // Hostname PC s print agentem
+
+// ❌ ŠPATNĚ - nebude fungovat z webové aplikace
+const printAgentUrl = 'http://localhost:8000';
+```
+
+3. **Pro iOS zařízení (iPad):**
+```javascript
+const printAgentUrl = 'http://lootealetenska.local:8000';  // S .local pro iOS
+```
+
+**Dostupné endpointy pro zjištění URL:**
+- `GET /print-agent-url?type=web` - Pro webové aplikace
+- `GET /print-agent-url?type=ios` - Pro iOS zařízení
+- `GET /network-info` - Kompletní síťové informace
+
 ---
 
 ## 📦 Struktura Request Body
