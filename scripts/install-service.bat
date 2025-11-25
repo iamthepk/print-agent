@@ -16,13 +16,15 @@ if %errorlevel% neq 0 (
 REM Cesta k projektu
 set PROJECT_PATH=C:\Users\team\Documents\GitHub\print-agent
 set NODE_PATH=C:\Program Files\nodejs\node.exe
+set WRAPPER_SCRIPT=%PROJECT_PATH%\scripts\start-with-ngrok.bat
 
 REM Vytvoříme službu pomocí sc.exe
+REM Použijeme wrapper skript, který spustí server i ngrok
 sc create "PrintAgentService" ^
-    binPath= "\"%NODE_PATH%\" \"%PROJECT_PATH%\server.js\"" ^
+    binPath= "cmd.exe /c \"%WRAPPER_SCRIPT%\"" ^
     start= auto ^
     displayname= "Print Agent Service" ^
-    description= "Lokální tiskový agent pro POS systém"
+    description= "Lokální tiskový agent pro POS systém s ngrok"
 
 if %errorlevel% equ 0 (
     echo Služba byla úspěšně vytvořena

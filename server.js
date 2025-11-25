@@ -444,7 +444,7 @@ app.get('/print-agent-url', async (req, res) => {
             },
             clientType: clientType,
             message: `Doporučená URL pro ${clientType}: ${recommendedUrl}`,
-            note: clientType === 'web' 
+            note: clientType === 'web'
                 ? '⚠️ Pro webové aplikace použijte hostname BEZ .local (funguje spolehlivěji)'
                 : undefined
         });
@@ -463,9 +463,9 @@ app.get('/auto-detect', async (req, res) => {
         const hostname = await getHostname();
         const port = PORT;
         const clientType = req.query.type || 'web'; // 'web', 'ios', 'android'
-        
+
         let urlVariants;
-        
+
         if (clientType === 'ios') {
             // Pro iOS: .local funguje, takže je na začátku
             urlVariants = [
@@ -489,7 +489,7 @@ app.get('/auto-detect', async (req, res) => {
             variants: urlVariants,
             recommended: urlVariants[0],
             clientType: clientType,
-            message: clientType === 'ios' 
+            message: clientType === 'ios'
                 ? 'Pro iOS zkuste varianty v pořadí priority. .local funguje na iOS zařízeních.'
                 : 'Pro webové aplikace zkuste varianty v pořadí priority. .local často NEFUNGUJE v webových aplikacích - použijte hostname bez .local nebo IP adresu.',
             usage: {
@@ -512,7 +512,7 @@ app.get('/detect-variants', async (req, res) => {
         const hostname = req.query.hostname || await getHostname();
         const port = req.query.port || PORT;
         const clientType = req.query.type || 'web'; // 'web', 'ios', 'android'
-        
+
         // Získáme IP adresu (pokud je to náš hostname)
         let localIP = null;
         try {
@@ -523,9 +523,9 @@ app.get('/detect-variants', async (req, res) => {
         } catch (e) {
             // Ignorujeme chybu
         }
-        
+
         let urlVariants;
-        
+
         if (clientType === 'ios') {
             // Pro iOS: .local funguje
             urlVariants = [
@@ -553,7 +553,7 @@ app.get('/detect-variants', async (req, res) => {
             clientType: clientType,
             variants: urlVariants,
             recommended: urlVariants[0],
-            message: clientType === 'web' 
+            message: clientType === 'web'
                 ? `Pro webové aplikace zkuste nejdřív: ${urlVariants[0]} (BEZ .local). .local často nefunguje v webových aplikacích!`
                 : `Pro iOS zkuste nejdřív: ${urlVariants[0]}`,
             testingInstructions: 'Zkuste každou variantu v pořadí a použijte první, která odpoví na /healthcheck endpoint.'
@@ -701,6 +701,40 @@ app.post('/restart-server', async (req, res) => {
     }
 });
 
+// Endpoint pro získání ngrok URL
+app.get('/ngrok-url', async (req, res) => {
+    try {
+        // Nejdřív zkusíme získat z ngrok API
+        let ngrokUrl = await getNgrokUrl();
+
+        // Pokud se to nepodaří, zkusíme načíst ze souboru
+        if (!ngrokUrl) {
+            ngrokUrl = await loadNgrokUrlFromFile();
+        }
+
+        if (ngrokUrl) {
+            res.json({
+                status: 'ok',
+                url: ngrokUrl,
+                source: 'api' // nebo 'file'
+            });
+        } else {
+            res.json({
+                status: 'ok',
+                url: null,
+                message: 'Ngrok URL není dostupná. Ujistěte se, že ngrok běží.',
+                hint: 'Spusťte ngrok pomocí: ngrok http 8000'
+            });
+        }
+    } catch (error) {
+        console.error('❌ Chyba při získávání ngrok URL:', error.message);
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
 // Endpoint pro otevření pokladní zásuvky
 app.post('/open-drawer', async (req, res) => {
     try {
@@ -815,6 +849,38 @@ async function getLocalIPAddress() {
     return addresses.length > 0 ? addresses[0] : 'localhost';
 }
 
+// Funkce pro získání ngrok URL z ngrok API
+async function getNgrokUrl() {
+    try {
+        const response = await fetch('http://127.0.0.1:4040/api/tunnels');
+        const data = await response.json();
+        const httpsTunnel = data.tunnels?.find(t => t.proto === 'https');
+        return httpsTunnel?.public_url || null;
+    } catch (error) {
+        // Ngrok API není dostupné nebo ngrok neběží
+        return null;
+    }
+}
+
+// Funkce pro načtení ngrok URL ze souboru
+async function loadNgrokUrlFromFile() {
+    try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const urlFile = path.join(__dirname, 'ngrok-url.txt');
+
+        if (fs.existsSync(urlFile)) {
+            const url = fs.readFileSync(urlFile, 'utf8').trim();
+            if (url && url.startsWith('https://')) {
+                return url;
+            }
+        }
+    } catch (error) {
+        // Ignorujeme chyby při čtení souboru
+    }
+    return null;
+}
+
 // Funkce pro kontrolu, zda je port už obsazený
 async function checkPort(port) {
     const net = await import('net');
@@ -834,6 +900,26 @@ async function startServer() {
     const localIP = await getLocalIPAddress();
     const hostname = await getHostname();
 
+    // Funkce pro zobrazení ngrok URL
+    const displayNgrokUrl = async () => {
+        // Počkáme chvíli, aby ngrok stihl spustit
+        setTimeout(async () => {
+            let ngrokUrl = await getNgrokUrl();
+
+            // Pokud se to nepodaří, zkusíme načíst ze souboru
+            if (!ngrokUrl) {
+                ngrokUrl = await loadNgrokUrlFromFile();
+            }
+
+            if (ngrokUrl) {
+                console.log(`   🌐 Ngrok HTTPS: ${ngrokUrl}`)
+                console.log(`   💡 POS aplikace může použít tuto URL pro komunikaci`)
+            } else {
+                console.log(`   ⚠️  Ngrok URL není dostupná (ngrok možná neběží)`)
+            }
+        }, 3000); // Počkáme 3 sekundy
+    };
+
     if (!isPortAvailable) {
         console.log(`⚠️ Port ${PORT} je už obsazený. Zkouším port ${PORT + 1}...`);
         const altPort = PORT + 1;
@@ -847,6 +933,7 @@ async function startServer() {
                 console.log(`   🌐 Hostname: http://${hostname}:${altPort}`)
                 console.log(`   🔢 IP adresa: http://${localIP}:${altPort}`)
                 console.log(`   ⚠️  DŮLEŽITÉ: Použijte http:// (ne https://) a port ${altPort} (ne ${altPort.toString().slice(0, -1)})`)
+                displayNgrokUrl();
             });
         } else {
             console.error(`❌ Ani port ${PORT} ani ${altPort} není dostupný. Ukončuji aplikaci.`);
@@ -860,6 +947,7 @@ async function startServer() {
             console.log(`   🌐 Hostname: http://${hostname}:${PORT}`)
             console.log(`   🔢 IP adresa: http://${localIP}:${PORT}`)
             console.log(`   ⚠️  DŮLEŽITÉ: Použijte http:// (ne https://) a port ${PORT} (ne ${PORT.toString().slice(0, -1)})`)
+            displayNgrokUrl();
         });
     }
 }

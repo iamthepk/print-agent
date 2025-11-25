@@ -30,6 +30,9 @@ netstat -an | findstr ":800" > nul
 if %errorlevel% equ 0 (
     echo Server bezi uspesne!
     echo Dostupné na: http://localhost:8000
+    echo.
+    echo Spoustim ngrok tunel...
+    powershell -ExecutionPolicy Bypass -File "scripts\start-ngrok.ps1"
 ) else (
     echo Server se nespustil
 )

@@ -111,4 +111,5 @@ Thumbs.db
 
 # Print agent specific
 temp/*.png
-temp/*.pdf 
+temp/*.pdf
+ngrok-url.txt 

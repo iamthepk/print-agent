@@ -20,6 +20,14 @@ If InStr(strOutput, ":800") > 0 Then
     Set objFile = objFSO.CreateTextFile(strPath & "\server-status.log", True)
     objFile.WriteLine "Print Agent Server spuštěn úspěšně: " & Now()
     objFile.Close
+    
+    ' Spustíme ngrok na pozadí (pokud je dostupný)
+    ' Použijeme PowerShell pro spuštění ngroku (0 = skryté okno)
+    strNgrokScript = strPath & "\scripts\start-ngrok.ps1"
+    If objFSO.FileExists(strNgrokScript) Then
+        ' Spustíme PowerShell skript pro ngrok (skrytě)
+        objShell.Run "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & strNgrokScript & """ -Port 8000", 0, False
+    End If
 Else
     ' Server se nespustil - vytvoříme error log
     Set objFile = objFSO.CreateTextFile(strPath & "\server-error.log", True)

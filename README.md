@@ -95,12 +95,64 @@ for /f "tokens=5" %a in ('netstat -ano ^| findstr ":800"') do taskkill /PID %a /
 ## 🔄 Jak to funguje
 
 ### Architektura
+
 Print Agent Server je Node.js aplikace, která:
 1. **Naslouchá na portu 8000** (nebo 8001, pokud 8000 není dostupný)
-2. **Přijímá HTTP POST požadavky** od POS aplikace
+2. **Přijímá HTTP POST požadavky** od POS aplikace (přes ngrok tunnel nebo přímo)
 3. **Generuje PDF dokumenty** pro účtenky pomocí PDFKit
 4. **Tiskne přes SumatraPDF** na termální tiskárnu
 5. **Komunikuje s Brother QL-700** pro tisk štítků pomocí Puppeteer
+
+### Možnosti připojení
+
+**1. Přímé připojení (pro testování):**
+- Frontend volá Print Agent přímo: `http://lootealetenska:8000/print-receipt`
+- Vyžaduje řešení CORS, `.local` domén, atd.
+
+**2. Ngrok Tunnel (doporučeno pro produkci - aktuální řešení):**
+- Print Agent běží lokálně na `http://127.0.0.1:8000`
+- Ngrok vytvoří veřejný HTTPS URL (např. `https://abc123.ngrok.io`)
+- Frontend volá ngrok URL: `POST https://abc123.ngrok.io/print-receipt`
+- Ngrok tuneluje požadavky do lokálního Print Agenta
+- **Výhody:** 
+  - ✅ HTTPS (žádné Mixed Content problémy)
+  - ✅ Žádné CORS problémy (ngrok podporuje CORS)
+  - ✅ Žádné problémy s `.local` doménami
+  - ✅ Funguje i přes Vercel a jiné serverless platformy
+  - ✅ Veřejný URL pro přístup odkudkoliv
+  - ✅ Jednoduchá konfigurace
+
+**Jak nastavit ngrok:**
+
+**Automatické spuštění (doporučeno):**
+```bash
+# 1. Nainstalujte ngrok (https://ngrok.com/download)
+#    Ujistěte se, že je ngrok v PATH
+
+# 2. Spusťte Print Agent pomocí start.bat
+start.bat
+
+# Ngrok se spustí automaticky po spuštění serveru!
+# URL se zobrazí v konzoli a uloží do ngrok-url.txt
+```
+
+**Manuální spuštění:**
+```bash
+# 1. Spusťte Print Agent na portu 8000
+npm start
+
+# 2. V novém terminálu spusťte ngrok (BEZ autentizace!)
+ngrok http 8000
+
+# 3. Zkopírujte HTTPS URL (např. [ngrok-url-redacted])
+# 4. Použijte tento URL v POS aplikaci
+```
+
+**⚠️ DŮLEŽITÉ:**
+- Ngrok musí běžet **BEZ autentizace** (`ngrok http 8000`), jinak POS aplikace dostane 401 chybu
+- URL se ukládá automaticky do `ngrok-url.txt`
+- URL můžete získat také přes API endpoint: `GET /ngrok-url`
+- S free plánem se URL mění při každém restartu ngroku
 
 ### Dynamický template systém
 - **Používá se pouze dynamický template** (`receiptTemplateDynamic.js`)
@@ -124,15 +176,18 @@ print-agent/
 ├── 📁 templates/                     # Šablony pro tisk
 │   └── receiptTemplateDynamic.js     # Dynamická šablona účtenky
 ├── 📁 scripts/                       # Spouštěcí a správní skripty
-│   ├── start-silent.bat              # Silent spuštění (pozadí)
-│   ├── start-silent.vbs              # VBS silent spuštění (nejtišší)
+│   ├── start-silent.bat              # Silent spuštění (pozadí) - s ngrok
+│   ├── start-silent.vbs              # VBS silent spuštění (nejtišší) - s ngrok
+│   ├── start-ngrok.ps1               # PowerShell skript pro spuštění ngroku
+│   ├── start-with-ngrok.bat         # Wrapper pro Windows službu (server + ngrok)
 │   ├── stop-server.bat               # Zastavení serveru
 │   ├── restart-server.bat            # Restart serveru (volá se z npm restart)
 │   ├── server-manager.bat            # Interaktivní správce
-│   ├── install-service.bat           # Instalace Windows služby
+│   ├── install-service.bat           # Instalace Windows služby (s ngrok)
 │   └── uninstall-service.bat         # Odebrání Windows služby
 ├── 📁 assets/                        # Obrázky a zdroje (logo, QR kódy)
-└── 📁 fonts/                         # Fonty pro tisk (Bebas Neue)
+├── 📁 fonts/                         # Fonty pro tisk (Bebas Neue)
+└── 📄 ngrok-url.txt                  # Uložená ngrok URL (automaticky generováno)
 ```
 
 ## 🔧 Konfigurace
@@ -143,121 +198,66 @@ Nastavte v `.env` souboru:
 RECEIPT_PRINTER=EPSON TM-T20III Receipt
 STICKER_PRINTER=Brother QL-700
 PORT=8000
-HOST=0.0.0.0
+HOST=127.0.0.1
 ```
 
-### 🌐 Přístup z iPadu nebo jiného zařízení v síti
+**⚠️ DŮLEŽITÉ o HOST:**
+- **Pro ngrok tunnel (doporučeno):** Použijte `HOST=127.0.0.1` (localhost) - ngrok vytahuje localhost a směruje to dál
+- **Pro přímý přístup z sítě:** Nastavte `HOST=0.0.0.0` (naslouchá na všech síťových rozhraních)
 
-Print Agent nyní automaticky poslouchá na **všech síťových rozhraních**, takže můžete přistupovat z iPadu, telefonu nebo jiného zařízení ve stejné síti.
+### 🌐 Připojení k POS aplikaci (Ngrok Tunnel)
 
-#### Krok 1: Zjistěte IP adresu PC
-Po spuštění serveru uvidíte v konzoli:
+**💡 Aktuální řešení - Ngrok Tunnel (doporučeno pro produkci):**
+
+POS aplikace používá **ngrok tunnel** pro komunikaci s Print Agentem. Toto řešení funguje i přes Vercel a jiné serverless platformy.
+
+**Jak to funguje:**
+1. Print Agent běží lokálně na `http://127.0.0.1:8000`
+2. Ngrok se spustí automaticky (při použití `start.bat`) nebo manuálně: `ngrok http 8000`
+3. Ngrok vytvoří veřejný HTTPS URL (např. `[ngrok-url-redacted]`)
+4. **Frontend** volá: `POST [ngrok-url-redacted]/print-receipt`
+5. Ngrok tuneluje požadavky do lokálního Print Agenta
+
+**Výhody:**
+- ✅ HTTPS (žádné Mixed Content problémy)
+- ✅ Funguje i přes Vercel a jiné serverless platformy
+- ✅ Žádné CORS problémy (ngrok podporuje CORS)
+- ✅ Žádné problémy s `.local` doménami
+- ✅ Veřejný URL pro přístup odkudkoliv
+- ✅ Jednoduchá konfigurace
+- ✅ **Automatické spuštění** ngroku společně s Print Agentem
+- ✅ **Automatické získání URL** přes API endpoint `/ngrok-url`
+
+**Nastavení ngrok:**
+
+**Automatické spuštění (doporučeno):**
+```bash
+# 1. Nainstalujte ngrok (https://ngrok.com/download)
+#    Ujistěte se, že je ngrok v PATH
+
+# 2. Spusťte Print Agent pomocí start.bat
+start.bat
+
+# Ngrok se spustí automaticky po spuštění serveru!
+# URL se zobrazí v konzoli a uloží do ngrok-url.txt
 ```
-🚀 Print agent běží na:
-   📍 Lokálně: http://localhost:8000
-   🌐 V síti:  http://192.168.1.100:8000
-   💡 Pro iPad použijte: http://192.168.1.100:8000
+
+**Manuální spuštění:**
+```bash
+# 1. Spusťte Print Agent
+npm start
+
+# 2. V novém terminálu spusťte ngrok (BEZ autentizace!)
+ngrok http 8000
+
+# 3. Zkopírujte HTTPS URL z ngrok výstupu (např. [ngrok-url-redacted])
+# 5. Použijte tento URL v POS aplikaci
 ```
 
-**Nebo zjistěte IP adresu manuálně:**
-- **Windows (CMD):** `ipconfig` → hledejte "IPv4 Address" pod aktivním síťovým adaptérem
-- **Windows (PowerShell):** `Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}`
-
-#### Krok 2: Nakonfigurujte firewall
-Windows Firewall může blokovat příchozí připojení. Povolte port:
-
-**Automaticky (PowerShell jako Admin):**
-```powershell
-New-NetFirewallRule -DisplayName "Print Agent" -Direction Inbound -LocalPort 8000,8001 -Protocol TCP -Action Allow
-```
-
-**Nebo manuálně:**
-1. Otevřete **Windows Defender Firewall**
-2. **Pokročilá nastavení** → **Příchozí pravidla** → **Nové pravidlo**
-3. Vyberte **Port** → **TCP** → **Specifické místní porty:** `8000,8001`
-4. **Povolit připojení** → Zaškrtněte všechny profily → Dokončit
-
-#### Krok 3: V POS aplikaci použijte správnou adresu
-
-**⚠️ DŮLEŽITÉ:** Pro webové POS aplikace (např. `pos.lootea.cz`) **NEPOUŽÍVEJTE** `http://localhost:8000`, protože to se pokusí připojit k localhostu na zařízení uživatele, ne k PC s print agentem!
-
-**Možnosti konfigurace:**
-
-**1. Automatické zjištění URL (doporučeno):**
+**Příklad volání z POS aplikace:**
 ```javascript
-// Získejte správnou URL automaticky - zkusí všechny varianty v SPRÁVNÉM pořadí
-async function getPrintAgentUrl(hostname = 'lootealetenska', port = 8000, clientType = 'web') {
-  // DŮLEŽITÉ: Pro webové aplikace zkoušíme BEZ .local jako první!
-  // .local často nefunguje v webových aplikacích kvůli bezpečnostním omezením prohlížeče
-  
-  // Nejdřív zkusíme získat správné pořadí variant z print agentu
-  try {
-    const detectUrl = `http://${hostname}:${port}/detect-variants?hostname=${hostname}&port=${port}&type=${clientType}`;
-    const response = await fetch(detectUrl, {
-      method: 'GET',
-      signal: AbortSignal.timeout(3000) // Timeout 3 sekundy
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      if (data.status === 'ok' && data.variants) {
-        // Zkusíme každou variantu v pořadí, dokud jedna nefunguje
-        for (const url of data.variants) {
-          try {
-            const testResponse = await fetch(`${url}/healthcheck`, {
-              method: 'GET',
-              signal: AbortSignal.timeout(2000) // Timeout 2 sekundy
-            });
-            if (testResponse.ok) {
-              console.log(`✅ Našli jsme funkční URL: ${url}`);
-              return url; // Našli jsme funkční URL!
-            }
-          } catch (e) {
-            // Tato varianta nefunguje, zkusíme další
-            console.log(`❌ ${url} nefunguje, zkouším další...`);
-            continue;
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.warn('Nepodařilo se připojit k /detect-variants:', error);
-  }
-  
-  // Fallback: zkusíme varianty v správném pořadí pro webové aplikace
-  const urlVariants = clientType === 'ios' 
-    ? [
-        `http://${hostname}.local:${port}`,  // iOS: .local funguje
-        `http://${hostname}:${port}`,
-      ]
-    : [
-        `http://${hostname}:${port}`,        // Web: BEZ .local jako první!
-        `http://${hostname}.local:${port}`,  // Web: .local jako poslední (často nefunguje)
-      ];
-  
-  for (const url of urlVariants) {
-    try {
-      const testResponse = await fetch(`${url}/healthcheck`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(2000)
-      });
-      if (testResponse.ok) {
-        console.log(`✅ Našli jsme funkční URL (fallback): ${url}`);
-        return url;
-      }
-    } catch (e) {
-      continue;
-    }
-  }
-  
-  // Pokud nic nefunguje, vraťme první variantu (hostname bez .local pro web)
-  console.warn('⚠️ Nepodařilo se ověřit připojení, používám výchozí URL');
-  return urlVariants[0];
-}
-
-// Použití v POS aplikaci
-const printAgentUrl = await getPrintAgentUrl('lootealetenska', 8000, 'web');
-console.log(`Používám Print Agent URL: ${printAgentUrl}`);
+// POS aplikace běží na HTTPS (https://pos.lootea.cz)
+const printAgentUrl = 'https://abc123.ngrok.io'; // Ngrok URL
 
 await fetch(`${printAgentUrl}/print-receipt`, {
   method: 'POST',
@@ -266,78 +266,37 @@ await fetch(`${printAgentUrl}/print-receipt`, {
 });
 ```
 
-**⚠️ DŮLEŽITÉ pro implementaci v POS aplikaci:**
-- Pro **webové aplikace** zkoušejte varianty v tomto pořadí:
-  1. `http://lootealetenska:8000` (BEZ .local) ← **zkusit jako první!**
-  2. `http://192.168.1.100:8000` (IP adresa)
-  3. `http://lootealetenska.local:8000` (S .local) ← **zkusit jako poslední!**
-- Pro **iOS zařízení** zkoušejte:
-  1. `http://lootealetenska.local:8000` (S .local) ← funguje na iOS
-  2. `http://lootealetenska:8000` (BEZ .local)
-  3. IP adresa
+**Poznámka:** Pro produkci zvažte použití ngrok s pevným URL (ngrok paid plan) nebo alternativní řešení s vlastním serverem.
 
-**2. Použití hostname přímo:**
-```javascript
-// ✅ SPRÁVNĚ pro webovou aplikaci (doporučeno)
-const printAgentUrl = 'http://lootealetenska:8000';  // Hostname BEZ .local
+### 🔄 Alternativní řešení (pokud ngrok nevyhovuje)
 
-// ⚠️ Pro iOS zařízení (iPad) - funguje v Safari, ale ne vždy v webových aplikacích
-const printAgentUrl = 'http://lootealetenska.local:8000';  // S .local pro iOS
-
-// ✅ Alternativa - IP adresa (vždy funguje, ale může se změnit)
-const printAgentUrl = 'http://192.168.1.100:8000';  // IP adresa PC
-
-// ❌ ŠPATNĚ - nebude fungovat z webové aplikace nebo iPadu
-const printAgentUrl = 'http://localhost:8000';
-```
-
-**⚠️ DŮLEŽITÉ o .local doménách:**
-- `.local` domény používají mDNS/Bonjour pro resolvování
-- **Safari na iPadu** má podporu pro mDNS a `.local` domény fungují
-- **Webové aplikace** (React/Vue/Angular) často **NEMOHOU** resolvovat `.local` domény kvůli bezpečnostním omezením prohlížeče
-- **Řešení:** Pro webové aplikace použijte hostname **BEZ .local** (např. `http://lootealetenska:8000`) nebo IP adresu
-
-**3. Použití IP adresy (pokud hostname nefunguje):**
-```javascript
-// ✅ Funguje, ale IP se může změnit při DHCP
-const printAgentUrl = 'http://192.168.1.100:8000';  // Nahraďte IP adresou vašeho PC
-```
-
-**Příklad v POS aplikaci:**
-```javascript
-// Tisk účtenky z webové aplikace nebo iPadu
-const printAgentUrl = 'http://lootealetenska:8000';  // Pro web
-// nebo
-const printAgentUrl = 'http://lootealetenska.local:8000';  // Pro iOS
-
-await fetch(`${printAgentUrl}/print-receipt`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(receiptData)
-});
-```
-
-#### ⚠️ Důležité poznámky:
-- **PC a iPad musí být ve stejné Wi‑Fi síti**
-- **IP adresa se může změnit** pokud PC používá DHCP (doporučujeme nastavit statickou IP nebo použít název PC)
-- **Pro produkci:** Zvažte nastavení statické IP adresy na PC nebo použití hostname
-
-#### 🔍 Testování připojení z iPadu:
-1. Otevřete Safari na iPadu
-2. Zadejte: `http://[IP_ADRESA_PC]:8000`
-3. Měli byste vidět Print Agent webové rozhraní
-4. Nebo použijte: `http://[IP_ADRESA_PC]:8000/healthcheck` → mělo by vrátit `{"status":"ok"}`
+**Přímé připojení z lokální sítě:**
+Pokud potřebujete přistupovat přímo z lokální sítě (bez ngrok), nastavte `HOST=0.0.0.0` v `.env` a použijte IP adresu nebo hostname PC.
 
 ### Automatické spouštění
+
+**✅ Ngrok se nyní spouští automaticky při všech způsobech spuštění!**
+
 1. **Windows služba** (nejlepší):
    ```bash
    scripts\install-service.bat
    ```
+   - Spustí Print Agent i ngrok automaticky při startu PC
+   - Ngrok URL se uloží do `ngrok-url.txt`
 
 2. **Startup složka**:
    ```bash
    copy scripts\start-silent.vbs "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\"
    ```
+   - Spustí Print Agent i ngrok automaticky při startu PC
+   - Ngrok běží na pozadí (skrytě)
+
+3. **Manuální spuštění**:
+   ```bash
+   start.bat
+   ```
+   - Spustí Print Agent a ngrok s výstupem do konzole
+   - Ngrok URL se zobrazí v konzoli
 
 ## 🌐 API Endpointy
 
@@ -675,6 +634,51 @@ POST /open-drawer
 ```http
 GET /healthcheck
 ```
+
+### Ngrok URL
+```http
+GET /ngrok-url
+```
+
+Vrátí aktuální ngrok HTTPS URL (pokud ngrok běží). Užitečné pro automatickou detekci URL v POS aplikacích:
+
+**Úspěšná odpověď:**
+```json
+{
+  "status": "ok",
+  "url": "[ngrok-url-redacted]",
+  "source": "api"
+}
+```
+
+**Pokud ngrok neběží:**
+```json
+{
+  "status": "ok",
+  "url": null,
+  "message": "Ngrok URL není dostupná. Ujistěte se, že ngrok běží.",
+  "hint": "Spusťte ngrok pomocí: ngrok http 8000"
+}
+```
+
+**Použití v POS aplikaci:**
+```javascript
+// Automatické získání ngrok URL
+const response = await fetch('http://localhost:8000/ngrok-url');
+const data = await response.json();
+
+if (data.url) {
+  // Použijte ngrok URL pro komunikaci
+  const printAgentUrl = data.url;
+  await fetch(`${printAgentUrl}/print-receipt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(receiptData)
+  });
+}
+```
+
+**Poznámka:** Endpoint nejdřív zkusí získat URL z ngrok API (`http://127.0.0.1:4040/api/tunnels`), pokud se to nepodaří, zkusí načíst z uloženého souboru `ngrok-url.txt`.
 
 ### Síťové informace
 ```http
