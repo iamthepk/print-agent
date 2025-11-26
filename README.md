@@ -703,21 +703,75 @@ await fetch('http://localhost:8000/print-receipt', {
 ---
 
 ### Tisk štítku
-```http
-POST /print-sticker
-Content-Type: application/json
 
+**Endpoint:** `POST /print-sticker`  
+**Content-Type:** `application/json`
+
+#### Struktura dat
+
+```javascript
 {
-  "pcs": "1",
-  "name": "Brown Sugar 700ml",
-  "order": "123",
-  "round": "1",
-  "sweetness": "less sweet",
-  "ice": "less ice",
-  "message": "Smile, You are beautiful!",
-  "toppings": ["Blueberry", "Peach"]
+  "pcs": "string",              // POVINNÉ - Počet kusů (obvykle "1")
+  "name": "string",              // POVINNÉ - Název produktu s velikostí (např. "Cappuccino 250ml")
+  "order": "string",             // POVINNÉ - Číslo objednávky (např. "123")
+  "round": "string",             // POVINNÉ - Pořadové číslo drinku v rámci objednávky (např. "1", "2")
+  "sweetness": "string",         // POVINNÉ - Úroveň sladkosti (např. "Bez cukru", "Středně", "Hodně")
+  "ice": "string",               // POVINNÉ - Množství ledu (např. "Bez ledu", "Málo", "Hodně")
+  "message": "string",           // VOLITELNÉ - Vlastní zpráva (legacy, nepoužívá se)
+  "toppings": ["string"],        // VOLITELNÉ - Pole názvů příloh (např. ["Čokoláda", "Šlehačka"])
+  "alcohol": "string",           // VOLITELNÉ - Název alkoholu (např. "Vodka", "Rum")
+  "milk": "string",              // VOLITELNÉ - Název mléka (např. "Ovesné mléko", "Mandlové mléko")
+  "extraShots": ["string"]       // VOLITELNÉ - Pole extra shotů ve formátu "množstvíx název" (např. ["2x Vodka", "1x Rum"])
 }
 ```
+
+#### Příklad kompletního payloadu
+
+```json
+{
+  "pcs": "1",
+  "name": "Cappuccino 250ml",
+  "order": "123",
+  "round": "1",
+  "sweetness": "Středně",
+  "ice": "Bez ledu",
+  "toppings": ["Čokoláda", "Šlehačka"],
+  "extraShots": ["2x Vodka", "1x Rum"],
+  "alcohol": "Vodka",
+  "milk": "Ovesné mléko"
+}
+```
+
+#### Příklad minimálního payloadu (bez volitelných polí)
+
+```json
+{
+  "pcs": "1",
+  "name": "Espresso 250ml",
+  "order": "123",
+  "round": "1",
+  "sweetness": "Bez cukru",
+  "ice": "Bez ledu"
+}
+```
+
+#### Poznámky
+
+- **Povinná pole:** `pcs`, `name`, `order`, `round`, `sweetness`, `ice`
+- **Volitelná pole:** `message`, `toppings`, `alcohol`, `milk`, `extraShots`
+- **Formát extraShots:** pole stringů ve formátu `"množstvíx název"` (např. `"2x Vodka"`)
+- **Formát toppings:** pole názvů příloh bez množství (zobrazí se jako `"1x Balls: název"`)
+- **alcohol:** název hlavního alkoholu (pokud je drink alkoholický) - zobrazí se v řádku se sladkostí a ledem
+- **milk:** název alternativního mléka (pokud není kravské mléko) - zobrazí se v řádku se sladkostí a ledem
+
+#### Formátování na štítku
+
+Štítek zobrazuje data v následujícím pořadí:
+1. **Zpráva a číslo objednávky** (nahoře)
+2. **Název nápoje** (velký text)
+3. **Sladkost ; Led | Mléko | Alkohol** (vše na jednom řádku, pokud jsou k dispozici)
+4. **Extra shots** (samostatné řádky, pokud jsou k dispozici)
+5. **Toppings** (zobrazí se jako "1x Balls: název", pokud jsou k dispozici)
 
 ### Otevření pokladní zásuvky
 ```http

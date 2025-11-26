@@ -35,18 +35,45 @@ export async function printSticker(drink = {}) {
 
         drink = { ...defaultDrink, ...drink }
 
-        const toppingsHtml = (drink.toppings || [])
-            .map(t => `<div class="topping">1x Balls: ${t}</div>`)
-            .join('\n')
+        // HTML pro toppings - pouze pokud existují
+        const toppingsHtml = (drink.toppings && drink.toppings.length > 0)
+            ? drink.toppings.map(t => `<div class="topping">1x ${t}</div>`).join('\n')
+            : ''
+
+        // HTML pro extra shots - pouze pokud existují
+        const extraShotsHtml = (drink.extraShots && drink.extraShots.length > 0)
+            ? drink.extraShots.map(shot => `<div class="topping">1x Extra shot: ${shot}</div>`).join('\n')
+            : ''
+
+        // Sestavení textu o sladkosti a ledu (povinné)
+        const parts = []
+        if (drink.sweetness) parts.push(drink.sweetness)
+        if (drink.ice) parts.push(drink.ice)
+        const drinkNote = parts.join(' ; ')
+
+        // Sestavení textu o mléku a alkoholu na jednom řádku (volitelné)
+        const milkAlcoholParts = []
+        if (drink.milk) milkAlcoholParts.push(drink.milk)
+        if (drink.alcohol) milkAlcoholParts.push(drink.alcohol)
+        const milkAlcoholNote = milkAlcoholParts.join(' | ')
+        const milkAlcoholNoteHtml = milkAlcoholNote
+            ? `<div class="drink-note">${milkAlcoholNote}</div>`
+            : ''
 
         const data = {
-            pcs: drink.pcs,
-            name: drink.name,
-            order: drink.order,
-            round: drink.round,
-            sweetness: drink.sweetness,
-            ice: drink.ice,
-            message: drink.message,
+            pcs: drink.pcs || '',
+            name: drink.name || '',
+            order: drink.order || '',
+            round: drink.round || '',
+            sweetness: drink.sweetness || '',
+            ice: drink.ice || '',
+            milk: drink.milk || '',
+            alcohol: drink.alcohol || '',
+            message: drink.message || '',
+            drinkNote: drinkNote,
+            milkAlcoholNote: milkAlcoholNote,
+            milkAlcoholNoteHtml: milkAlcoholNoteHtml,
+            extraShotsList: extraShotsHtml,
             toppingsList: toppingsHtml
         }
 
