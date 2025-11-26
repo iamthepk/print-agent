@@ -60,7 +60,7 @@ Tento příkaz automaticky:
 
 **Pomocí skriptu:**
 ```bash
-scripts\stop.bat
+stop.bat
 ```
 
 **Manuálně (PowerShell):**
@@ -81,10 +81,8 @@ for /f "tokens=5" %a in ('netstat -ano ^| findstr ":800"') do taskkill /PID %a /
 |--------|-------|
 | `npm start` | Spustí server i ngrok automaticky |
 | `start.bat` | Spustí server i ngrok automaticky (stejné jako `npm start`) |
-| `scripts\stop.bat` | Zastaví server i ngrok |
+| `stop.bat` | Zastaví server i ngrok |
 | `scripts\restart.bat` | Restartuje server i ngrok |
-| `scripts\install.bat` | Instalace jako Windows služba (spustí se při startu PC) |
-| `scripts\uninstall.bat` | Odstranění Windows služby |
 
 ## 🔄 Jak to funguje
 
@@ -185,15 +183,11 @@ print-agent/
 ├── 📁 templates/                     # Šablony pro tisk
 │   └── receiptTemplateDynamic.js     # Dynamická šablona účtenky
 ├── 📁 scripts/                       # Spouštěcí a správní skripty
-│   ├── start-silent.bat              # Silent spuštění (pozadí) - s ngrok
-│   ├── start-silent.vbs              # VBS silent spuštění (nejtišší) - s ngrok
-│   ├── start-ngrok.ps1               # PowerShell skript pro spuštění ngroku
-│   ├── start-with-ngrok.bat         # Wrapper pro Windows službu (server + ngrok)
-│   ├── stop-server.bat               # Zastavení serveru
-│   ├── restart-server.bat            # Restart serveru (volá se z npm restart)
-│   ├── server-manager.bat            # Interaktivní správce
-│   ├── install-service.bat           # Instalace Windows služby (s ngrok)
-│   └── uninstall-service.bat         # Odebrání Windows služby
+│   ├── PrintAgent_ngrok_Services.vbs # VBS skript pro automatické spuštění při přihlášení (silent)
+│   └── restart.bat                   # Restart serveru i ngrok
+├── 📄 start.bat                      # Hlavní spouštěcí skript (server + ngrok)
+├── 📄 stop.bat                       # Zastavení serveru i ngrok
+├── 📄 start-ngrok.ps1                # PowerShell skript pro spuštění ngroku
 ├── 📁 assets/                        # Obrázky a zdroje (logo, QR kódy)
 ├── 📁 fonts/                         # Fonty pro tisk (Bebas Neue)
 └── 📄 ngrok-url.txt                  # Uložená ngrok URL (automaticky generováno)
@@ -286,26 +280,20 @@ Pokud potřebujete přistupovat přímo z lokální sítě (bez ngrok), nastavte
 
 **✅ Ngrok se nyní spouští automaticky při všech způsobech spuštění!**
 
-1. **Windows služba** (nejlepší):
+1. **Startup složka**:
    ```bash
-   scripts\install-service.bat
+   copy "scripts\PrintAgent_ngrok_Services.vbs" "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\"
    ```
-   - Spustí Print Agent i ngrok automaticky při startu PC
+   - Spustí Print Agent i ngrok automaticky při přihlášení uživatele
+   - Běží na pozadí (skrytě)
    - Ngrok URL se uloží do `ngrok-url.txt`
 
-2. **Startup složka**:
-   ```bash
-   copy scripts\start-silent.vbs "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\"
-   ```
-   - Spustí Print Agent i ngrok automaticky při startu PC
-   - Ngrok běží na pozadí (skrytě)
-
-3. **Manuální spuštění**:
+2. **Manuální spuštění**:
    ```bash
    start.bat
    ```
    - Spustí Print Agent a ngrok s výstupem do konzole
-   - Ngrok URL se zobrazí v konzoli
+   - Ngrok URL se zobrazí v konzoli a uloží do `ngrok-url.txt`
 
 ## 🌐 API Endpointy
 
@@ -850,7 +838,7 @@ curl http://localhost:8000/healthcheck
 
 ### Server se nespustí
 1. Zkontrolujte, zda Node.js je nainstalován
-2. Spusťte `scripts\stop-server.bat` pro zastavení všech instancí
+2. Spusťte `stop.bat` pro zastavení všech instancí
 3. Zkontrolujte logy v `server-status.log`
 
 ### Port není dostupný

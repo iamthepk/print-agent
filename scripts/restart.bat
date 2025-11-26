@@ -10,6 +10,6 @@ call "%~dp0stop.bat" NOPAUSE
 REM Pockame
 timeout /t 2 /nobreak > nul
 
-REM Spustime znovu
-call "%~dp0start.bat"
+REM Spustime znovu (start.bat je v root slozce)
+call "%~dp0..\start.bat"
 
