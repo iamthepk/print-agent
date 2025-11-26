@@ -86,6 +86,103 @@ for /f "tokens=5" %a in ('netstat -ano ^| findstr ":800"') do taskkill /PID %a /
 
 ## 🔄 Jak to funguje
 
+### 📖 Case Study - Kompletní workflow
+
+#### 1. Spuštění systému
+
+**Automatické spuštění při přihlášení:**
+```
+Uživatel se přihlásí do Windows
+  ↓
+Windows spustí soubory ze Startup složky
+  ↓
+PrintAgent_ngrok_Services.vbs se spustí (skrytě)
+  ↓
+VBS skript spustí start.bat (skrytě)
+```
+
+**Manuální spuštění:**
+```
+Uživatel spustí start.bat (nebo npm start)
+  ↓
+start.bat se spustí
+```
+
+#### 2. Spuštění Print Agent Serveru
+
+```
+start.bat:
+  1. Přepne se do správného adresáře (cd /d "%~dp0")
+  2. Spustí Node.js server: node.exe server.js
+  3. Počká 3 sekundy
+  4. Zkontroluje, zda server běží na portu 8000
+```
+
+**Výsledek:** Print Agent Server běží na `http://localhost:8000`
+
+#### 3. Spuštění ngrok tunelu
+
+```
+start.bat (pokud server běží):
+  1. Spustí PowerShell skript: start-ngrok.ps1
+  2. start-ngrok.ps1:
+     - Zkontroluje, zda ngrok je v PATH
+     - Zkontroluje, zda server běží na portu 8000
+     - Spustí ngrok: ngrok http 8000
+     - Počká 3 sekundy
+     - Získá HTTPS URL z ngrok API (http://127.0.0.1:4040/api/tunnels)
+     - Uloží URL do ngrok-url.txt
+```
+
+**Výsledek:** Ngrok běží a vytváří HTTPS tunel (např. `[ngrok-url-redacted]`)
+
+#### 4. Komunikace POS aplikace s Print Agentem
+
+```
+POS aplikace (běží na HTTPS, např. https://pos.lootea.cz):
+  1. Získá ngrok URL (z ngrok-url.txt nebo API endpoint)
+  2. Pošle HTTP POST požadavek:
+     POST [ngrok-url-redacted]/print-receipt
+     Body: { orderNumber: "123", items: [...], ... }
+  3. Ngrok přesměruje požadavek na localhost:8000
+  4. Print Agent Server přijme požadavek
+```
+
+#### 5. Zpracování požadavku a tisk
+
+**Pro účtenky (`/print-receipt`):**
+```
+Print Agent Server:
+  1. Validuje vstupní data
+  2. Generuje PDF účtenku pomocí PDFKit
+  3. Otevře PDF přes SumatraPDF
+  4. Tiskne na termální tiskárnu (Epson TM-T20III)
+  5. Vrátí odpověď POS aplikaci: { status: "ok" }
+```
+
+**Pro štítky (`/print-sticker`):**
+```
+Print Agent Server:
+  1. Validuje vstupní data
+  2. Generuje HTML šablonu štítku
+  3. Použije Puppeteer pro renderování HTML do obrázku
+  4. Tiskne na štítkovou tiskárnu (Brother QL-700)
+  5. Vrátí odpověď POS aplikaci: { status: "ok" }
+```
+
+**Systém podporuje dvě tiskárny:**
+- **Epson TM-T20III** - termální tiskárna pro účtenky
+- **Brother QL-700** - štítková tiskárna pro štítky
+
+#### 6. Ukončení
+
+```
+Uživatel spustí stop.bat:
+  1. Najde procesy node.exe a ngrok.exe
+  2. Ukončí je
+  3. Server i ngrok se zastaví
+```
+
 ### Architektura
 
 Print Agent Server je Node.js aplikace, která:
