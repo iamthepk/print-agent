@@ -84,6 +84,12 @@ export async function printSticker(drink = {}) {
             ? `<div class="drink-note">${milkAlcoholNote}</div>`
             : ''
 
+        // HTML pro flavor - pouze pokud existuje
+        // Flavor přichází jako string ve formátu "Mixed with vanilla" nebo "Mixed with vanilla, Mixed with chocolate"
+        const flavorHtml = (drink.flavor && drink.flavor.trim() !== '')
+            ? `<div class="drink-note">${drink.flavor}</div>`
+            : ''
+
         const data = {
             pcs: drink.pcs || '',
             name: drink.name || '',
@@ -93,10 +99,12 @@ export async function printSticker(drink = {}) {
             ice: drink.ice || '',
             milk: drink.milk || '',
             alcohol: drink.alcohol || '',
+            flavor: drink.flavor || '',
             message: drink.message || '',
             drinkNote: drinkNote,
             milkAlcoholNote: milkAlcoholNote,
             milkAlcoholNoteHtml: milkAlcoholNoteHtml,
+            flavorHtml: flavorHtml,
             extraShotsList: extraShotsHtml,
             toppingsList: toppingsHtml
         }
