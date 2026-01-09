@@ -36,37 +36,19 @@ export async function printSticker(drink = {}) {
         drink = { ...defaultDrink, ...drink }
 
         // HTML pro toppings - pouze pokud existují
-        // Pokud topping už obsahuje množství (např. "2x název"), použijeme ho tak, jak je
-        // Jinak přidáme "1x" před název
+        // Frontend posílá kompletně formátované stringy:
+        // - Pokud quantity === 1: jen název (např. "Strawberry Balls")
+        // - Pokud quantity !== 1: množství včetně "x" (např. "0.5x Strawberry Balls", "2x Chocolate")
+        // Použijeme stringy tak, jak přijdou, bez přidávání dalšího množství
         const toppingsHtml = (drink.toppings && drink.toppings.length > 0)
-            ? drink.toppings.map(t => {
-                // Zkontrolujeme, zda string už začíná číslem a "x" (např. "2x", "3x")
-                const quantityPattern = /^\d+x\s/i;
-                if (quantityPattern.test(t.trim())) {
-                    // Topping už má množství, použijeme ho tak, jak je
-                    return `<div class="topping">${t}</div>`;
-                } else {
-                    // Topping nemá množství, přidáme "1x"
-                    return `<div class="topping">1x ${t}</div>`;
-                }
-            }).join('\n')
+            ? drink.toppings.map(t => `<div class="topping">${t}</div>`).join('\n')
             : ''
 
         // HTML pro extra shots - pouze pokud existují
-        // Extra shots přicházejí ve formátu "množstvíx název" (např. "2x Vodka", "1x Rum")
-        // Množství je vždy součástí názvu, takže použijeme shot tak jak je
+        // Frontend posílá kompletně formátované stringy (stejně jako toppings)
+        // Použijeme stringy tak, jak přijdou, bez přidávání dalšího množství
         const extraShotsHtml = (drink.extraShots && drink.extraShots.length > 0)
-            ? drink.extraShots.map(shot => {
-                // Zkontrolujeme, zda string už začíná číslem a "x" (např. "2x", "3x")
-                const quantityPattern = /^\d+x\s/i;
-                if (quantityPattern.test(shot.trim())) {
-                    // Extra shot už má množství, použijeme ho tak, jak je
-                    return `<div class="topping">Extra shot: ${shot}</div>`;
-                } else {
-                    // Extra shot nemá množství, přidáme "1x"
-                    return `<div class="topping">Extra shot: 1x ${shot}</div>`;
-                }
-            }).join('\n')
+            ? drink.extraShots.map(shot => `<div class="topping">Extra shot: ${shot}</div>`).join('\n')
             : ''
 
         // Sestavení textu o sladkosti a ledu (povinné)
