@@ -22,6 +22,9 @@ const DPI = 300
 
 export async function printSticker(drink = {}) {
     try {
+        // Defaultní hodnoty pro povinná pole a message (pro testování)
+        // Volitelná pole (toppings, extraShots) se nepoužijí, pokud je POS nepošle
+        // Message je hardcodovaný a použije se vždy, pokud ho POS nepřepíše
         const defaultDrink = {
             pcs: '1',
             name: "Lootea's Brown Sugar 700 ml",
@@ -29,11 +32,21 @@ export async function printSticker(drink = {}) {
             round: "1",
             sweetness: "less sweet",
             ice: "less ice",
-            message: "Smile, You are beautiful!",
-            toppings: ["Blueberry", "Peach", "Pomegranate", "Cherry"]
+            message: "Smile, You are beautiful!"
         }
 
+        // Uložíme si, která volitelná pole POS skutečně poslal
+        const hasToppings = 'toppings' in drink
+        const hasExtraShots = 'extraShots' in drink
+
+        // Merge: použijeme defaultní hodnoty jen pro pole, která POS neposlal
         drink = { ...defaultDrink, ...drink }
+
+        // Pokud POS neposlal volitelná pole, nastavíme je na undefined, aby se nepoužily defaultní hodnoty
+        // (toppings, extraShots jsou volitelná - pokud je POS nepošle, nechceme je zobrazit)
+        // Message zůstává hardcodovaný v defaultDrink
+        if (!hasToppings) drink.toppings = undefined
+        if (!hasExtraShots) drink.extraShots = undefined
 
         // HTML pro toppings - pouze pokud existují
         // Frontend posílá kompletně formátované stringy:
@@ -82,7 +95,7 @@ export async function printSticker(drink = {}) {
             milk: drink.milk || '',
             alcohol: drink.alcohol || '',
             flavor: drink.flavor || '',
-            message: drink.message || '',
+            message: drink.message || '', // Message je hardcodovaný v defaultDrink, nebo ho POS může přepsat
             drinkNote: drinkNote,
             milkAlcoholNote: milkAlcoholNote,
             milkAlcoholNoteHtml: milkAlcoholNoteHtml,
