@@ -11,5 +11,7 @@ REM Pockame
 timeout /t 2 /nobreak > nul
 
 REM Spustime znovu (start.bat je v root slozce)
-call "%~dp0..\start.bat"
+REM Pouzijeme start /MIN pro spusteni v minimalizovanem okne (proces musi bezet nezávisle)
+cd /d "%~dp0.."
+start /MIN "" "%~dp0..\start.bat"
 

@@ -122,7 +122,8 @@ export async function printSticker(drink = {}) {
         await page.setContent(template, { waitUntil: 'networkidle0' })
         await page.screenshot({
             path: imagePath,
-            fullPage: true
+            fullPage: true,
+            omitBackground: false
         })
         await browser.close()
         console.log('✅ PNG vygenerován:', imagePath)

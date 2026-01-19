@@ -5,6 +5,11 @@ Lokální tiskový agent pro POS systém s podporou účtenek a štítků.
 ## ✨ Hlavní funkce
 
 - 🧾 **Tisk účtenek** na termální tiskárně (Epson TM-T20III)
+  - ✅ **ESC/POS RAW tisk** (výchozí) - neomezená délka, rychlý tisk (2-3s)
+  - ✅ **PDF tisk** (záložní) - přes SumatraPDF, limit ~280mm
+  - ✅ **Automatický fallback** - pokud ESC/POS selže, použije se PDF
+  - ✅ **Podpora českých diakritik** - UTF-8 nebo CP852 codepage
+  - ✅ **Univerzální** - funguje s většinou ESC/POS tiskáren, ne jen Epson
   - ✅ Normální prodejní účtenky
   - ✅ **Refund účtenky** (vrácení peněz) se záporými hodnotami pro POS
   - ✅ **Zobrazení slev s procenty** (např. "Discount 10%: -20.00 CZK")
@@ -23,6 +28,75 @@ Lokální tiskový agent pro POS systém s podporou účtenek a štítků.
 ```bash
 npm install
 ```
+
+**Poznámka:** Po instalaci závislostí se automaticky nainstaluje `iconv-lite` pro podporu českých diakritik (codepage CP852).
+
+### Windows Prerequisites
+
+**Pro ESC/POS tisk (výchozí metoda):**
+- ✅ **Windows 10/11** - žádné další požadavky
+- ✅ **USB připojení k tiskárně** - tiskárna musí být nainstalovaná v systému
+- ✅ **Tiskárna v systému** - musí být viditelná přes `Control Panel > Devices and Printers`
+- ✅ **Správný název tiskárny** - nastavte v `.env` jako `RECEIPT_PRINTER`
+- ✅ **WinSpoolerHelper.exe** - Pre-built binární nebo build z source (viz níže)
+
+**Pro PDF tisk (záložní metoda):**
+- ✅ **SumatraPDF** - automaticky se používá pokud existuje na `C:\Users\team\AppData\Local\SumatraPDF\SumatraPDF.exe`
+- ⚠️ **Pokud SumatraPDF není na výchozí cestě**, nastavte `SUMATRA_PATH` v `.env`
+
+### Building WinSpoolerHelper.exe
+
+**WinSpoolerHelper.exe** je nativní Windows aplikace pro RAW printing přes Windows Spooler API. Je to spolehlivější než UNC/copy hack.
+
+**Option 1: Use Pre-built Binary (Recommended)**
+```bash
+# If WinSpoolerHelper.exe is already in the root directory, you're done!
+# The print agent will automatically use it.
+```
+
+**Option 2: Build from Source**
+
+**Prerequisites:**
+- .NET 6.0 SDK or later: https://dotnet.microsoft.com/download
+
+**Build steps:**
+```bash
+# Navigate to native helper directory
+cd native/winspooler
+
+# Run build script
+build.bat
+
+# Copy to print agent root
+copy bin\Release\net6.0\win-x64\publish\WinSpoolerHelper.exe ..\..\WinSpoolerHelper.exe
+
+# Verify
+cd ..\..
+WinSpoolerHelper.exe --check "EPSON TM-T20III Receipt"
+```
+
+**Manual build:**
+```bash
+cd native/winspooler
+dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
+```
+
+**What does WinSpoolerHelper.exe do?**
+- Uses Windows Print Spooler API (OpenPrinter, WritePrinter, etc.)
+- Sends data as "RAW" datatype (direct bytes, no conversion)
+- Works with USB printers by name (no UNC/sharing required)
+- Fast (100-200ms overhead) and reliable
+
+**Ověření tiskárny:**
+1. Otevřete PowerShell a spusťte:
+   ```powershell
+   wmic printer get name,status
+   ```
+2. Zkopírujte přesný název vaší tiskárny (např. "EPSON TM-T20III Receipt")
+3. Nastavte v `.env`:
+   ```env
+   RECEIPT_PRINTER=EPSON TM-T20III Receipt
+   ```
 
 ### Spuštění serveru
 
@@ -292,13 +366,61 @@ print-agent/
 
 ## 🔧 Konfigurace
 
-### Tiskárny
+### Tiskárny a metody tisku
 Nastavte v `.env` souboru:
 ```env
+# Printer names
 RECEIPT_PRINTER=EPSON TM-T20III Receipt
 STICKER_PRINTER=Brother QL-700
+
+# Receipt printing method
+RECEIPT_METHOD=escpos              # escpos (default) or pdf
+RECEIPT_FALLBACK_METHOD=pdf        # pdf (default) or none
+RECEIPT_STRICT_MODE=false          # true = no fallback on error
+
+# ESC/POS settings
+RECEIPT_ENCODING_MODE=utf8         # utf8 (default) or codepage
+RECEIPT_CODEPAGE=cp852             # cp852 (Czech), cp850 (Western), cp866 (Cyrillic)
+RECEIPT_CHARS_PER_LINE=48          # Default for 80mm receipts
+
+# RAW printing method (Windows Spooler)
+RAW_SEND_METHOD=winspooler         # winspooler (default, recommended) or unc_copy
+RAW_SEND_FALLBACK=unc_copy         # unc_copy (default) or none
+WINSPOOLER_HELPER_PATH=./WinSpoolerHelper.exe  # Path to helper exe
+
+# Server
 PORT=8000
 HOST=127.0.0.1
+```
+
+### Metody tisku účtenek
+
+**1. ESC/POS RAW tisk (výchozí, doporučeno)**
+- ✅ **Neomezená délka** účtenek (žádný limit jako u PDF)
+- ✅ **Rychlý tisk** (2-3 sekundy)
+- ✅ **Univerzální** - funguje s většinou ESC/POS termálních tiskáren
+- ✅ **Podpora českých diakritik** - UTF-8 nebo CP852 codepage
+- ✅ **Žádné externí nástroje** (nevyžaduje SumatraPDF)
+- ⚠️ Vyžaduje USB připojení k tiskárně
+
+**2. PDF tisk (záložní metoda)**
+- ✅ **Spolehlivý** - používá SumatraPDF
+- ⚠️ **Limit délky** ~280mm (fixní výška PDF)
+- ⚠️ **Pomalejší** - generování PDF + SumatraPDF overhead
+
+**Doporučené nastavení pro produkci:**
+```env
+RECEIPT_METHOD=escpos              # Primární metoda
+RECEIPT_FALLBACK_METHOD=pdf        # Záloha pokud ESC/POS selže
+RECEIPT_STRICT_MODE=false          # Povolit fallback
+RAW_SEND_METHOD=winspooler         # Windows Spooler API (nejspolehlivější)
+RAW_SEND_FALLBACK=unc_copy         # UNC/copy fallback
+```
+
+**Pokud chcete používat pouze PDF:**
+```env
+RECEIPT_METHOD=pdf
+RECEIPT_FALLBACK_METHOD=none
 ```
 
 **⚠️ DŮLEŽITÉ o HOST:**
@@ -395,6 +517,35 @@ Pokud potřebujete přistupovat přímo z lokální sítě (bez ngrok), nastavte
 ## 🌐 API Endpointy
 
 ### Tisk účtenky
+
+**Endpoint:** `POST /print-receipt`  
+**Content-Type:** `application/json`
+
+**Response transparentnost:**
+Endpoint vrací detailní informace o použité metodě tisku:
+```json
+{
+  "status": "ok",
+  "method": "escpos",           // "escpos" nebo "pdf"
+  "fallbackUsed": false,        // true pokud primární metoda selhala
+  "durationMs": 2345,           // doba tisku v ms
+  "bytesWritten": 1024,         // počet bytů odeslaných (ESC/POS)
+  "printer": "EPSON TM-T20III Receipt",
+  "message": "Receipt printed via ESC/POS"
+}
+```
+
+**V případě chyby:**
+```json
+{
+  "status": "error",
+  "message": "Print failed (strict mode): Printer not found",
+  "method": "escpos",
+  "fallbackUsed": false,
+  "durationMs": 123,
+  "error": "Printer not found"
+}
+```
 
 #### Normální prodej
 ```http
@@ -778,6 +929,74 @@ await fetch('http://localhost:8000/print-receipt', {
 POST /open-drawer
 ```
 
+### Print Capabilities
+```http
+GET /print-capabilities
+```
+
+Vrátí informace o dostupných metodách tisku a aktuální konfiguraci. Užitečné pro diagnostiku a kontrolu, zda je ESC/POS tisk dostupný.
+
+**Odpověď:**
+```json
+{
+  "status": "ok",
+  "capabilities": {
+    "escpos": {
+      "available": true,
+      "printer": "EPSON TM-T20III Receipt",
+      "printerFound": true,
+      "printerOffline": false,
+      "encoding": "utf8",
+      "codepage": "cp852",
+      "charsPerLine": 48
+    },
+    "pdf": {
+      "available": true,
+      "printer": "EPSON TM-T20III Receipt",
+      "sumatraPath": "C:\\Users\\team\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe"
+    }
+  },
+  "config": {
+    "receiptMethod": "escpos",
+    "receiptFallbackMethod": "pdf",
+    "receiptStrictMode": false,
+    "receiptPrinter": "EPSON TM-T20III Receipt",
+    "stickerPrinter": "Brother QL-700"
+  },
+  "message": "ESC/POS receipt printing is available and ready"
+}
+```
+
+### Test ESC/POS Receipt
+```http
+POST /test-receipt-escpos
+```
+
+Vytiskne testovací účtenku s českými diakritiky pro ověření ESC/POS tisku. Vždy použije ESC/POS metodu (ignoruje konfiguraci).
+
+**Testovací text:**
+- "Příliš žluťoučký kůň"
+- "Úpěl ďábelské ódy"
+- "Test české diakritiky: ěščřžýáíéóúůďťň ĚŠČŘŽÝÁÍÉÓÚŮĎŤŇ"
+
+**Odpověď:**
+```json
+{
+  "status": "ok",
+  "message": "Test receipt sent to printer",
+  "testData": {
+    "czechTest": "Příliš žluťoučký kůň úpěl ďábelské ódy",
+    "encoding": "utf8",
+    "codepage": "cp852"
+  },
+  "method": "escpos",
+  "fallbackUsed": false,
+  "durationMs": 1234,
+  "bytesWritten": 512,
+  "printer": "EPSON TM-T20III Receipt"
+}
+```
+
 ### Healthcheck
 ```http
 GET /healthcheck
@@ -985,6 +1204,142 @@ curl http://localhost:8000/healthcheck
 - ✅ Fallback na alternativní porty
 - ✅ Čisté ukončování procesů
 
+## 📘 ESC/POS Tisk - Jak to funguje
+
+### Architektura ESC/POS tisku
+
+```
+POS aplikace
+    ↓
+POST /print-receipt (JSON payload)
+    ↓
+print/printReceipt.js (orchestrace + method selection)
+    ↓
+print/printReceiptEscpos.js (rendering)
+    ↓ (vytvoří ESC/POS buffer)
+print/rawPrinter.js (Windows raw printing)
+    ↓ (PowerShell + copy command)
+Windows printer queue (USB)
+    ↓
+Termální tiskárna (ESC/POS compatible)
+```
+
+### Co je ESC/POS?
+
+**ESC/POS** (Epson Standard Code for Point of Sale) je standardní protokol pro termální tiskárny:
+- ✅ **Příkazy jako byte sekvence** - např. `\x1B\x40` = inicializace
+- ✅ **Univerzální** - podporuje většina termálních tiskáren (Epson, Star, Citizen, atd.)
+- ✅ **Neomezená délka** - žádný page break, tiskne až do konce
+- ✅ **Rychlý** - přímá komunikace, žádné PDF/rendering overhead
+
+### Podpora českých diakritik
+
+**Režim UTF-8 (výchozí):**
+```env
+RECEIPT_ENCODING_MODE=utf8
+```
+- Moderní tiskárny (většina Epson TM-T20III, TM-T88, atd.)
+- Všechny české znaky fungují přímo
+
+**Režim Codepage (fallback):**
+```env
+RECEIPT_ENCODING_MODE=codepage
+RECEIPT_CODEPAGE=cp852
+```
+- Starší tiskárny bez UTF-8
+- CP852 = Central European (Czech, Polish, Hungarian)
+- CP850 = Western European
+- CP866 = Cyrillic
+
+**Test diakritiky:**
+```bash
+curl -X POST http://localhost:8000/test-receipt-escpos
+```
+
+### Windows RAW Printing
+
+**Primární metoda: WinSpoolerHelper.exe (Windows Spooler API)**
+
+Používáme nativní C# helper aplikaci, která volá Windows Print Spooler API přímo:
+
+```
+Node.js Print Agent
+    ↓ (execFile)
+WinSpoolerHelper.exe
+    ↓ (P/Invoke)
+winspool.drv (Windows Spooler)
+    ↓
+OpenPrinter()      - Open printer handle
+StartDocPrinter()  - Start job (datatype: "RAW")
+StartPagePrinter() - Start page
+WritePrinter()     - Write ESC/POS bytes
+EndPagePrinter()   - End page
+EndDocPrinter()    - End job
+ClosePrinter()     - Close handle
+    ↓
+Printer Driver → USB → Tiskárna
+```
+
+**Výhody WinSpooler API:**
+- ✅ **Spolehlivé** - skutečné Windows API, ne hack
+- ✅ **Rychlé** - 100-200ms overhead (vs. 500ms PowerShell)
+- ✅ **Nepotřebuje UNC/sdílení** - funguje s lokálními USB tiskárnami
+- ✅ **RAW datatype** - žádná konverze, přímé ESC/POS bytes
+- ✅ **Validace** - kontroluje dostupnost tiskárny (OpenPrinter)
+
+**Fallback metoda: UNC copy command (legacy)**
+
+Pokud WinSpoolerHelper.exe není dostupný nebo selže, použije se legacy metoda:
+
+1. **Vytvoření temp souboru** s ESC/POS bytes
+2. **Copy command**: `copy /B temp.bin \\localhost\PRINTER`
+3. **Windows spooler** pošle data na tiskárnu
+4. **Tiskárna** interpretuje ESC/POS příkazy
+
+**Konfigurace metod:**
+```env
+RAW_SEND_METHOD=winspooler         # Primární (doporučeno)
+RAW_SEND_FALLBACK=unc_copy         # Fallback (legacy)
+```
+
+### Konfigurace pro různé tiskárny
+
+**Epson TM-T20III (testováno):**
+```env
+RECEIPT_PRINTER=EPSON TM-T20III Receipt
+RECEIPT_METHOD=escpos
+RECEIPT_ENCODING_MODE=utf8
+RECEIPT_CHARS_PER_LINE=48
+RAW_SEND_METHOD=winspooler
+```
+
+**Epson TM-T88V:**
+```env
+RECEIPT_PRINTER=EPSON TM-T88V Receipt
+RECEIPT_METHOD=escpos
+RECEIPT_ENCODING_MODE=utf8
+RECEIPT_CHARS_PER_LINE=42  # narrower paper
+RAW_SEND_METHOD=winspooler
+```
+
+**Star TSP143:**
+```env
+RECEIPT_PRINTER=Star TSP143
+RECEIPT_METHOD=escpos
+RECEIPT_ENCODING_MODE=utf8
+RECEIPT_CHARS_PER_LINE=48
+RAW_SEND_METHOD=winspooler
+```
+
+**Starší tiskárna bez UTF-8:**
+```env
+RECEIPT_PRINTER=Your Printer Name
+RECEIPT_METHOD=escpos
+RECEIPT_ENCODING_MODE=codepage
+RECEIPT_CODEPAGE=cp852
+RECEIPT_CHARS_PER_LINE=48
+```
+
 ## 🚨 Řešení problémů
 
 ### Server se nespustí
@@ -1000,7 +1355,151 @@ curl http://localhost:8000/healthcheck
 1. Zkontrolujte připojení tiskárny
 2. Ověřte název tiskárny v `.env`
 3. Použijte endpoint `/check-printer` pro diagnostiku
+4. Použijte endpoint `/print-capabilities` pro kontrolu ESC/POS dostupnosti
+
+### WinSpoolerHelper.exe problémy
+
+**1. "WinSpoolerHelper.exe not found":**
+```bash
+# Build helper from source
+cd native/winspooler
+build.bat
+
+# Copy to print agent root
+copy bin\Release\net6.0\win-x64\publish\WinSpoolerHelper.exe ..\..\WinSpoolerHelper.exe
+
+# Verify
+cd ..\..
+WinSpoolerHelper.exe --check "EPSON TM-T20III Receipt"
+```
+
+**2. Build errors (.NET SDK not found):**
+```bash
+# Check if .NET is installed
+dotnet --version
+
+# If not, download from:
+# https://dotnet.microsoft.com/download
+```
+
+**3. "Failed to open printer" (Win32 Error 1801):**
+- Název tiskárny je nesprávný
+- Zkontrolujte přesný název:
+  ```bash
+  wmic printer get name
+  ```
+- Nebo použijte PowerShell:
+  ```powershell
+  Get-Printer | Select-Object Name
+  ```
+
+**4. "Access denied" (Win32 Error 5):**
+- Zkontrolujte oprávnění k tiskárně
+- Zkuste spustit jako administrátor (pokud je to nutné)
+
+**5. Fallback na UNC copy:**
+```bash
+# Pokud WinSpooler selže, print agent automaticky použije UNC copy
+# Zkontrolujte logy pro details:
+# "⚠️ Primary RAW send method (winspooler) failed"
+# "🔄 Attempting RAW send fallback: unc_copy"
+
+# Pro force UNC copy:
+RAW_SEND_METHOD=unc_copy
+```
+
+**6. Test WinSpoolerHelper.exe manuálně:**
+```bash
+# Create test ESC/POS file
+# ESC @ (init) + "Hello World" + LF + GS V (cut)
+
+# Print via WinSpooler
+WinSpoolerHelper.exe "EPSON TM-T20III Receipt" test.bin "Test Job"
+
+# Check printer
+WinSpoolerHelper.exe --check "EPSON TM-T20III Receipt"
+```
+
+### ESC/POS tisk nefunguje
+
+**1. České znaky se netisknou správně:**
+```env
+# Zkuste změnit encoding mode
+RECEIPT_ENCODING_MODE=codepage
+RECEIPT_CODEPAGE=cp852
+```
+
+**2. Tiskárna vytiskne "raw" data (nečitelné znaky):**
+- Tiskárna není v RAW módu
+- Zkuste použít PDF metodu:
+  ```env
+  RECEIPT_METHOD=pdf
+  RECEIPT_FALLBACK_METHOD=none
+  ```
+
+**3. Chyba "Printer not found":**
+```bash
+# Zjistěte přesný název tiskárny
+wmic printer get name,status
+
+# Nastavte přesný název v .env
+RECEIPT_PRINTER=EPSON TM-T20III Receipt
+```
+
+**4. ESC/POS tisk je pomalý:**
+- Normální rychlost je 2-3 sekundy
+- Pokud trvá déle, zkontrolujte USB připojení
+- Zkuste endpoint `/test-receipt-escpos` pro benchmark
+
+**5. Fallback na PDF nefunguje:**
+```bash
+# Zkontrolujte config
+curl http://localhost:8000/print-capabilities
+
+# Ověřte SumatraPDF cestu
+SUMATRA_PATH="C:\\Users\\team\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe"
+```
+
+**6. Test Czech diacritics:**
+```bash
+# Test ESC/POS s českými znaky
+curl -X POST http://localhost:8000/test-receipt-escpos
+
+# Pokud znaky nejsou správně:
+# 1. Změňte RECEIPT_ENCODING_MODE=codepage
+# 2. Nastavte RECEIPT_CODEPAGE=cp852
+# 3. Restartujte server: npm restart
+```
+
+### Debugging ESC/POS
+
+**Zapnout verbose logging:**
+```bash
+# V konzoli uvidíte:
+# - Počet bytů odeslaných na tiskárnu
+# - Encoding mode (utf8/codepage)
+# - Metodu použitou (escpos/pdf)
+# - Fallback info
+# - Duration v ms
+```
+
+**Zkontrolovat capabilities:**
+```bash
+curl http://localhost:8000/print-capabilities
+```
+
+**Test s jednoduchým receiptem:**
+```bash
+curl -X POST http://localhost:8000/print-receipt \
+  -H "Content-Type: application/json" \
+  -d '{
+    "receipt_number": "TEST-001",
+    "items": [{"name": "Test", "quantity": 1, "price": 100}],
+    "total_czk": 100,
+    "payment_method": [{"method": "Cash", "amount": 100}]
+  }'
+```
 
 ---
 
-**Print Agent Server v1.0** - Připraven pro produkční použití! 🎉
+**Print Agent Server v1.2** - S Windows Spooler API RAW tiskem! 🎉

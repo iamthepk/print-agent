@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { printReceipt } from './print/printReceipt.js'
 import { printSticker } from './print/printSticker.js'
+import { checkPrinterAvailability, canOpenPrinter, isWinSpoolerHelperAvailable } from './print/rawPrinter.js'
+import { printConfig } from './config/printConfig.js'
 import fs from 'fs'
 
 dotenv.config()
@@ -18,12 +20,28 @@ app.use(cors())
 app.use(express.json())
 app.use('/assets', express.static(path.join(__dirname, 'assets')))
 
-// Automatická detekce výchozí tiskárny pokud není nastavena
-const RECEIPT_PRINTER = process.env.RECEIPT_PRINTER || 'EPSON TM-T20III Receipt'
-const STICKER_PRINTER = process.env.STICKER_PRINTER || 'Brother QL-700'
+// Use centralized printer config
+const RECEIPT_PRINTER = printConfig.RECEIPT_PRINTER
+const STICKER_PRINTER = printConfig.STICKER_PRINTER
 
+// Runtime method override (for testing - stored in memory)
+let runtimeMethodOverride = null;
+
+console.log('============================================')
+console.log('PRINT AGENT CONFIGURATION')
+console.log('============================================')
 console.log('RECEIPT_PRINTER:', RECEIPT_PRINTER)
 console.log('STICKER_PRINTER:', STICKER_PRINTER)
+console.log('RECEIPT_METHOD:', printConfig.RECEIPT_METHOD)
+console.log('RECEIPT_FALLBACK_METHOD:', printConfig.RECEIPT_FALLBACK_METHOD)
+console.log('RECEIPT_STRICT_MODE:', printConfig.RECEIPT_STRICT_MODE)
+console.log('RECEIPT_ENCODING_MODE:', printConfig.RECEIPT_ENCODING_MODE)
+console.log('RECEIPT_CODEPAGE:', printConfig.RECEIPT_CODEPAGE)
+console.log('RECEIPT_CHARS_PER_LINE:', printConfig.RECEIPT_CHARS_PER_LINE)
+console.log('RAW_SEND_METHOD:', printConfig.RAW_SEND_METHOD)
+console.log('RAW_SEND_FALLBACK:', printConfig.RAW_SEND_FALLBACK)
+console.log('WINSPOOLER_HELPER_PATH:', printConfig.WINSPOOLER_HELPER_PATH)
+console.log('============================================')
 
 // Přidání základní HTML stránky
 app.get('/', (req, res) => {
@@ -130,12 +148,88 @@ app.get('/', (req, res) => {
                     margin: 5px 0;
                     color: #666;
                 }
+                .print-method-selector {
+                    margin: 30px 0;
+                    padding: 20px;
+                    background: #f8f9fa;
+                    border-radius: 5px;
+                    text-align: left;
+                }
+                .print-method-selector h3 {
+                    margin-bottom: 15px;
+                    color: #2c3e50;
+                    font-size: 16px;
+                }
+                .method-options {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                }
+                .method-option {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 10px;
+                    background: white;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }
+                .method-option:hover {
+                    background: #e9ecef;
+                }
+                .method-option input[type="radio"] {
+                    cursor: pointer;
+                }
+                .method-option label {
+                    cursor: pointer;
+                    flex: 1;
+                    margin: 0;
+                }
+                .method-description {
+                    font-size: 12px;
+                    color: #666;
+                    margin-top: 5px;
+                }
+                .test-receipt-button {
+                    margin-top: 15px;
+                    width: 100%;
+                }
             </style>
         </head>
         <body>
             <div class="container">
                 <img src="${logoPath}" alt="LOOTEA Logo" class="logo" onerror="this.style.display='none';">
                 <div class="title">PRINT AGENT</div>
+                
+                <div class="print-method-selector">
+                    <h3>📄 Metoda tisku účtenek:</h3>
+                    <div style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                        Výchozí metoda (config): <strong>${printConfig.RECEIPT_METHOD === 'escpos' ? 'ESC/POS' : 'SumatraPDF'}</strong>
+                        <span id="runtime-override-info" style="margin-left: 10px; color: #007bff; font-weight: bold;"></span>
+                    </div>
+                    <div class="method-options">
+                        <div class="method-option" onclick="selectMethod('escpos')">
+                            <input type="radio" id="method-escpos" name="printMethod" value="escpos" ${printConfig.RECEIPT_METHOD === 'escpos' ? 'checked' : ''}>
+                            <label for="method-escpos">
+                                <strong>ESC/POS (Raw)</strong>
+                                <div class="method-description">Rychlý tisk, neomezená délka, podpora českých diakritik</div>
+                            </label>
+                        </div>
+                        <div class="method-option" onclick="selectMethod('pdf')">
+                            <input type="radio" id="method-pdf" name="printMethod" value="pdf" ${printConfig.RECEIPT_METHOD === 'pdf' ? 'checked' : ''}>
+                            <label for="method-pdf">
+                                <strong>SumatraPDF (PDF)</strong>
+                                <div class="method-description">Legacy metoda, limit ~280mm délky</div>
+                            </label>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button class="test-receipt-button" onclick="testReceiptPrint(event)" style="flex: 1;">🖨️ Testovat tisk účtenky</button>
+                        <button onclick="setDefaultMethod(event)" style="flex: 1; background: #28a745;">⚙️ Nastavit jako výchozí</button>
+                        <button onclick="clearDefaultMethod(event)" style="flex: 1; background: #6c757d;">🔄 Resetovat</button>
+                    </div>
+                </div>
                 
                 <div class="buttons">
                     <button onclick="testDrawer(event)">🧪 Testovat pokladní zásuvku</button>
@@ -153,6 +247,183 @@ app.get('/', (req, res) => {
                 </div>
                 
                 <script>
+                    // Load current runtime override on page load
+                    async function loadCurrentMethod() {
+                        try {
+                            const response = await fetch('/get-print-method');
+                            const data = await response.json();
+                            if (data.status === 'ok') {
+                                const overrideInfo = document.getElementById('runtime-override-info');
+                                if (data.runtimeOverride) {
+                                    overrideInfo.textContent = '[Aktivní: ' + (data.runtimeOverride === 'escpos' ? 'ESC/POS' : 'SumatraPDF') + ']';
+                                    overrideInfo.style.color = '#28a745';
+                                } else {
+                                    overrideInfo.textContent = '';
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error loading current method:', error);
+                        }
+                    }
+                    
+                    // Load on page load
+                    loadCurrentMethod();
+                    
+                    function selectMethod(method) {
+                        document.getElementById('method-' + method).checked = true;
+                    }
+                    
+                    function getSelectedMethod() {
+                        const selected = document.querySelector('input[name="printMethod"]:checked');
+                        return selected ? selected.value : 'escpos';
+                    }
+                    
+                    async function setDefaultMethod(event) {
+                        event.preventDefault();
+                        const selectedMethod = getSelectedMethod();
+                        const button = event.target;
+                        const resultDiv = document.getElementById('result');
+                        
+                        button.disabled = true;
+                        button.textContent = '⏳ Nastavuji...';
+                        resultDiv.style.display = 'block';
+                        resultDiv.className = 'result';
+                        resultDiv.innerHTML = '⏳ Nastavuji výchozí metodu...';
+                        
+                        try {
+                            const response = await fetch('/set-print-method', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ method: selectedMethod })
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.status === 'ok') {
+                                resultDiv.className = 'result success';
+                                resultDiv.innerHTML = '✅ ' + data.message + '<br><small>Všechny požadavky z POS systému budou používat tuto metodu</small>';
+                                await loadCurrentMethod(); // Refresh override info
+                            } else {
+                                resultDiv.className = 'result error';
+                                resultDiv.innerHTML = '❌ ' + data.message;
+                            }
+                        } catch (error) {
+                            resultDiv.className = 'result error';
+                            resultDiv.innerHTML = '❌ Chyba při komunikaci se serverem: ' + error.message;
+                        }
+                        
+                        button.disabled = false;
+                        button.textContent = '⚙️ Nastavit jako výchozí';
+                    }
+                    
+                    async function clearDefaultMethod(event) {
+                        event.preventDefault();
+                        const button = event.target;
+                        const resultDiv = document.getElementById('result');
+                        
+                        button.disabled = true;
+                        button.textContent = '⏳ Resetuji...';
+                        resultDiv.style.display = 'block';
+                        resultDiv.className = 'result';
+                        resultDiv.innerHTML = '⏳ Resetuji na výchozí metodu z konfigurace...';
+                        
+                        try {
+                            const response = await fetch('/set-print-method', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ method: null })
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.status === 'ok') {
+                                resultDiv.className = 'result success';
+                                resultDiv.innerHTML = '✅ ' + data.message + '<br><small>Používá se výchozí metoda z konfigurace</small>';
+                                await loadCurrentMethod(); // Refresh override info
+                            } else {
+                                resultDiv.className = 'result error';
+                                resultDiv.innerHTML = '❌ ' + data.message;
+                            }
+                        } catch (error) {
+                            resultDiv.className = 'result error';
+                            resultDiv.innerHTML = '❌ Chyba při komunikaci se serverem: ' + error.message;
+                        }
+                        
+                        button.disabled = false;
+                        button.textContent = '🔄 Resetovat';
+                    }
+                    
+                    async function testReceiptPrint(event) {
+                        const button = event.target;
+                        const resultDiv = document.getElementById('result');
+                        const selectedMethod = getSelectedMethod();
+                        
+                        button.disabled = true;
+                        button.textContent = '⏳ Tisknu...';
+                        resultDiv.style.display = 'block';
+                        resultDiv.className = 'result';
+                        resultDiv.innerHTML = '⏳ Tisknu testovací účtenku metodou: <strong>' + (selectedMethod === 'escpos' ? 'ESC/POS' : 'SumatraPDF') + '</strong>...';
+                        
+                        // Test receipt data
+                        const testReceipt = {
+                            receipt_number: 'TEST-' + Date.now(),
+                            order_number: '999',
+                            sold_at: new Date().toISOString(),
+                            items: [
+                                {
+                                    name: 'Testovací položka - Příliš žluťoučký kůň',
+                                    quantity: 1,
+                                    price: 123.45
+                                },
+                                {
+                                    name: 'Další test - Úpěl ďábelské ódy',
+                                    quantity: 2,
+                                    price: 67.89
+                                }
+                            ],
+                            total_czk: 259.23,
+                            payment_method: [
+                                { method: 'Hotovost', amount: 259.23 }
+                            ],
+                            note: 'Testovací účtenka - metoda: ' + (selectedMethod === 'escpos' ? 'ESC/POS' : 'SumatraPDF')
+                        };
+                        
+                        try {
+                            const response = await fetch('/print-receipt?method=' + selectedMethod, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(testReceipt)
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.status === 'ok') {
+                                resultDiv.className = 'result success';
+                                let html = '✅ ' + data.message + '<br><br>';
+                                html += '<small>';
+                                html += '<strong>Metoda:</strong> ' + (data.method === 'escpos' ? 'ESC/POS' : 'PDF') + '<br>';
+                                html += '<strong>Tiskárna:</strong> ' + (data.printer || 'N/A') + '<br>';
+                                if (data.durationMs) {
+                                    html += '<strong>Doba:</strong> ' + data.durationMs + ' ms<br>';
+                                }
+                                if (data.fallbackUsed) {
+                                    html += '<strong>⚠️ Použita záložní metoda</strong><br>';
+                                }
+                                html += '</small>';
+                                resultDiv.innerHTML = html;
+                            } else {
+                                resultDiv.className = 'result error';
+                                resultDiv.innerHTML = '❌ ' + data.message + '<br><small>Chyba: ' + (data.error || 'Neznámá chyba') + '</small>';
+                            }
+                        } catch (error) {
+                            resultDiv.className = 'result error';
+                            resultDiv.innerHTML = '❌ Chyba při komunikaci se serverem: ' + error.message;
+                        }
+                        
+                        button.disabled = false;
+                        button.textContent = '🖨️ Testovat tisk účtenky';
+                    }
+                    
                     async function testDrawer(event) {
                         const button = event.target;
                         const resultDiv = document.getElementById('result');
@@ -331,11 +602,49 @@ app.get('/', (req, res) => {
 
 app.post('/print-receipt', async (req, res) => {
     try {
-        await printReceipt(req.body)
-        res.json({ status: 'ok' })
+        console.log('📥 Received print-receipt request');
+        console.log('📥 Query params:', req.query);
+        console.log('📥 Body keys:', Object.keys(req.body || {}));
+
+        // Support method override via query parameter or body
+        const methodFromQuery = req.query.method;
+        const methodFromBody = req.body?.method;
+        const printMethod = methodFromQuery || methodFromBody;
+
+        // Remove method from body if it was there (to avoid passing it to printReceipt as receipt data)
+        const receiptData = { ...req.body };
+        if (receiptData.method) {
+            delete receiptData.method;
+        }
+
+        // Prepare options for printReceipt
+        const options = {};
+        if (printMethod && (printMethod === 'escpos' || printMethod === 'pdf')) {
+            options.method = printMethod;
+            console.log(`📋 Print method override (from request): ${printMethod}`);
+        } else if (runtimeMethodOverride && (runtimeMethodOverride === 'escpos' || runtimeMethodOverride === 'pdf')) {
+            options.method = runtimeMethodOverride;
+            console.log(`📋 Print method override (from runtime setting): ${runtimeMethodOverride}`);
+        } else {
+            console.log(`📋 Using default method from config: ${printConfig.RECEIPT_METHOD}`);
+        }
+
+        console.log('📋 Calling printReceipt with options:', options);
+        const result = await printReceipt(receiptData, options)
+        console.log('✅ Print successful:', result.method || 'default');
+
+        res.json({
+            status: 'ok',
+            ...result
+        })
     } catch (e) {
-        console.error('Chyba pri tisku uctenky:', e.message)
-        res.status(500).json({ status: 'error', message: e.message })
+        console.error('❌ Chyba pri tisku uctenky:', e.message)
+        console.error('❌ Error stack:', e.stack)
+        res.status(500).json({
+            status: 'error',
+            message: e.message,
+            ...(typeof e === 'object' ? e : {})
+        })
     }
 })
 
@@ -350,8 +659,183 @@ app.post('/print-sticker', async (req, res) => {
     }
 })
 
+// Endpoint pro zjištění print capabilities (ESC/POS support, config, etc.)
+app.get('/print-capabilities', async (req, res) => {
+    try {
+        // Check if receipt printer is available
+        const printerCheck = await checkPrinterAvailability(RECEIPT_PRINTER);
+
+        // Check if can open printer via WinSpooler API (more reliable)
+        const canOpenPrinterResult = await canOpenPrinter(RECEIPT_PRINTER);
+
+        // Check if WinSpoolerHelper.exe is available
+        const winSpoolerAvailable = await isWinSpoolerHelperAvailable();
+
+        res.json({
+            status: 'ok',
+            capabilities: {
+                escpos: {
+                    available: printerCheck.available,
+                    canOpenPrinter: canOpenPrinterResult,
+                    printer: RECEIPT_PRINTER,
+                    printerFound: printerCheck.found,
+                    printerOffline: printerCheck.offline,
+                    encoding: printConfig.RECEIPT_ENCODING_MODE,
+                    codepage: printConfig.RECEIPT_CODEPAGE,
+                    charsPerLine: printConfig.RECEIPT_CHARS_PER_LINE
+                },
+                pdf: {
+                    available: true,
+                    printer: RECEIPT_PRINTER,
+                    sumatraPath: printConfig.SUMATRA_PATH
+                },
+                rawSend: {
+                    winSpoolerHelperAvailable: winSpoolerAvailable,
+                    winSpoolerHelperPath: printConfig.WINSPOOLER_HELPER_PATH,
+                    primaryMethod: printConfig.RAW_SEND_METHOD,
+                    fallbackMethod: printConfig.RAW_SEND_FALLBACK,
+                    canOpenPrinter: canOpenPrinterResult
+                }
+            },
+            config: {
+                receiptMethod: printConfig.RECEIPT_METHOD,
+                receiptFallbackMethod: printConfig.RECEIPT_FALLBACK_METHOD,
+                receiptStrictMode: printConfig.RECEIPT_STRICT_MODE,
+                rawSendMethod: printConfig.RAW_SEND_METHOD,
+                rawSendFallback: printConfig.RAW_SEND_FALLBACK,
+                receiptPrinter: RECEIPT_PRINTER,
+                stickerPrinter: STICKER_PRINTER
+            },
+            message: printerCheck.available
+                ? (canOpenPrinterResult
+                    ? 'ESC/POS receipt printing is available and ready (WinSpooler API confirmed)'
+                    : 'ESC/POS receipt printing available but WinSpooler API check failed (will use fallback)')
+                : 'ESC/POS receipt printing not available (printer not found or offline)'
+        });
+    } catch (e) {
+        console.error('Chyba pri zjistovani capabilities:', e.message);
+        res.status(500).json({
+            status: 'error',
+            message: e.message
+        });
+    }
+});
+
+// Test endpoint pro ESC/POS s českými diakritiky
+app.post('/test-receipt-escpos', async (req, res) => {
+    try {
+        console.log('🧪 Testing ESC/POS receipt with Czech diacritics...');
+
+        // Create test receipt with Czech diacritics
+        const testReceipt = {
+            receipt_number: 'TEST-' + Date.now(),
+            order_number: '999',
+            sold_at: new Date().toISOString(),
+            items: [
+                {
+                    name: 'Příliš žluťoučký kůň',
+                    quantity: 1,
+                    price: 123.45
+                },
+                {
+                    name: 'Úpěl ďábelské ódy',
+                    quantity: 2,
+                    price: 67.89
+                }
+            ],
+            total_czk: 259.23,
+            total_eur: 10.21,
+            payment_method: [
+                { method: 'Hotovost', amount: 259.23 }
+            ],
+            note: 'Test české diakritiky: ěščřžýáíéóúůďťň ĚŠČŘŽÝÁÍÉÓÚŮĎŤŇ'
+        };
+
+        // Force ESC/POS method for test
+        const result = await printReceipt(testReceipt, { method: 'escpos' });
+
+        res.json({
+            status: 'ok',
+            message: 'Test receipt sent to printer',
+            testData: {
+                czechTest: 'Příliš žluťoučký kůň úpěl ďábelské ódy',
+                encoding: printConfig.RECEIPT_ENCODING_MODE,
+                codepage: printConfig.RECEIPT_CODEPAGE
+            },
+            ...result
+        });
+    } catch (e) {
+        console.error('Chyba pri testovani ESC/POS:', e.message);
+        res.status(500).json({
+            status: 'error',
+            message: e.message,
+            ...(typeof e === 'object' ? e : {})
+        });
+    }
+});
+
 app.get('/healthcheck', (req, res) => {
     res.json({ status: 'ok' })
+})
+
+// Diagnostic endpoint to check if server is receiving requests
+app.get('/diagnostic', (req, res) => {
+    res.json({
+        status: 'ok',
+        message: 'Server is running and responding',
+        timestamp: new Date().toISOString(),
+        config: {
+            receiptMethod: printConfig.RECEIPT_METHOD,
+            receiptFallbackMethod: printConfig.RECEIPT_FALLBACK_METHOD,
+            receiptPrinter: printConfig.RECEIPT_PRINTER,
+            runtimeMethodOverride: runtimeMethodOverride
+        }
+    })
+})
+
+// Endpoint to set runtime method override (for testing)
+app.post('/set-print-method', (req, res) => {
+    try {
+        const { method } = req.body;
+
+        if (method && (method === 'escpos' || method === 'pdf' || method === null)) {
+            if (method === null) {
+                runtimeMethodOverride = null;
+                console.log('📋 Runtime method override cleared - using config default');
+            } else {
+                runtimeMethodOverride = method;
+                console.log(`📋 Runtime method override set to: ${method}`);
+            }
+
+            res.json({
+                status: 'ok',
+                message: `Print method override set to: ${method || 'default (from config)'}`,
+                currentOverride: runtimeMethodOverride,
+                defaultMethod: printConfig.RECEIPT_METHOD
+            });
+        } else {
+            res.status(400).json({
+                status: 'error',
+                message: 'Invalid method. Use "escpos", "pdf", or null to clear override'
+            });
+        }
+    } catch (e) {
+        console.error('Chyba pri nastavovani metody:', e.message);
+        res.status(500).json({
+            status: 'error',
+            message: e.message
+        });
+    }
+})
+
+// Endpoint to get current print method setting
+app.get('/get-print-method', (req, res) => {
+    res.json({
+        status: 'ok',
+        defaultMethod: printConfig.RECEIPT_METHOD,
+        runtimeOverride: runtimeMethodOverride,
+        effectiveMethod: runtimeMethodOverride || printConfig.RECEIPT_METHOD
+    });
 })
 
 // Endpoint pro získání URL print agentu (pro POS aplikace)
@@ -613,32 +1097,64 @@ app.post('/restart-server', async (req, res) => {
     try {
         const { exec } = await import('child_process');
         const path = await import('path');
+        const fs = await import('fs');
 
         res.json({
             status: 'ok',
             message: 'Server bude restartován...'
         });
 
-        // Pošleme odpověď a pak spustíme restart script (SILENT)
+        // Pošleme odpověď a pak spustíme restart script
         setTimeout(() => {
-            console.log('🔄 Restartování serveru pomocí restart scriptu...');
-            const restartScript = path.join(__dirname, 'scripts', 'restart-server.bat');
-            const scriptPath = path.join(__dirname, '..');
-
-            // Spustíme script SILENT (bez zobrazení okna)
-            // /B = běh na pozadí, cmd /c = spustit a zavřít, > nul 2>&1 = potlačit výstup
-            exec(`cmd /c "${restartScript}"`, {
-                windowsHide: true,
-                cwd: scriptPath
-            }, (error) => {
-                if (error) {
-                    console.error('Chyba pri spousteni restart scriptu:', error);
+            try {
+                console.log('🔄 Restartování serveru pomocí restart scriptu...');
+                const restartScript = path.join(__dirname, 'scripts', 'restart.bat');
+                
+                // Zkontrolujeme, že script existuje
+                if (!fs.existsSync(restartScript)) {
+                    console.error('❌ Restart script neexistuje:', restartScript);
+                    setTimeout(() => process.exit(1), 1000);
+                    return;
                 }
-                // Ukončíme aktuální proces - restart script ho restartuje
+
+                // Použijeme jednoduchý přístup - spustíme restart.bat přímo
+                // Escapujeme cesty pro Windows
+                const escapedScript = restartScript.replace(/\\/g, '\\\\');
+                const command = `"${restartScript}"`;
+                
+                console.log('📋 Spouštím restart script:', restartScript);
+                console.log('📋 Working directory:', __dirname);
+                
+                exec(command, {
+                    windowsHide: true,
+                    cwd: __dirname,
+                    detached: true,
+                    stdio: 'ignore'
+                }, (error) => {
+                    if (error) {
+                        console.error('❌ Chyba pri spousteni restart scriptu:', error);
+                        console.error('Error code:', error.code);
+                        console.error('Error signal:', error.signal);
+                    } else {
+                        console.log('✅ Restart script spuštěn úspěšně');
+                    }
+                });
+
+                console.log('✅ Restart script spuštěn, ukončuji tento proces za 2 sekundy...');
+
+                // Počkáme chvíli a pak ukončíme tento proces
+                // Restart script ho zastaví a spustí znovu
                 setTimeout(() => {
+                    console.log('🔄 Ukončuji tento proces...');
                     process.exit(0);
-                }, 500);
-            });
+                }, 2000);
+            } catch (error) {
+                console.error('❌ Chyba pri spousteni restart scriptu:', error);
+                // Pokud selže restart script, alespoň ukončíme proces
+                setTimeout(() => {
+                    process.exit(1);
+                }, 1000);
+            }
         }, 500);
     } catch (e) {
         console.error('Chyba pri restartu serveru:', e.message);

@@ -22,5 +22,10 @@ if %errorlevel% equ 0 (
     echo Print Agent a ngrok byly uspesne zastaveny
 )
 
+REM Pokud byl volan s parametrem NOPAUSE, nepauzujeme
+if "%1"=="NOPAUSE" (
+    exit /b 0
+)
+
 pause
 
