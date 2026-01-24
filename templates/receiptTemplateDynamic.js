@@ -71,6 +71,48 @@ function isNotPlaceholder(value) {
 }
 
 /**
+ * Parse split payment from paymentMethod string
+ * Returns array of { methodName, amount } or null if not split payment
+ * @param {string} paymentMethod - Payment method string (may contain \n for split payment)
+ * @returns {Array<{methodName: string, amount: number}>|null} Parsed payment methods or null
+ */
+function parseSplitPayment(paymentMethod) {
+    if (!paymentMethod || typeof paymentMethod !== 'string') {
+        return null;
+    }
+    
+    // Check if it's split payment (contains newline)
+    if (!paymentMethod.includes('\n')) {
+        return null;
+    }
+    
+    // Split by newline and parse each line
+    const lines = paymentMethod.split('\n').filter(line => line.trim().length > 0);
+    const parsedMethods = [];
+    
+    for (const line of lines) {
+        // Match format: "METHOD: ...AMOUNT CZK"
+        // Example: "CASH:                30.00 CZK"
+        // Regex explanation:
+        // ^(.+?): - method name before colon (non-greedy)
+        // \s+ - one or more spaces
+        // (\d+\.\d{2}) - amount with 2 decimal places
+        // \s+CZK$ - spaces and CZK at the end
+        const match = line.match(/^(.+?):\s+(\d+\.\d{2})\s+CZK$/);
+        if (match) {
+            const methodName = match[1].trim();
+            const amount = parseFloat(match[2]);
+            if (!isNaN(amount) && amount > 0) {
+                parsedMethods.push({ methodName, amount });
+            }
+        }
+    }
+    
+    // Return null if no valid methods found (fallback to normal payment)
+    return parsedMethods.length > 0 ? parsedMethods : null;
+}
+
+/**
  * Formátuje datum a čas do formátu dd-mm-yyyy hh:mm:ss
  * Podporuje různé vstupní formáty: "2025-11-03 15:38", "2025-11-03 15:38:45", "2025-11-03", atd.
  */
@@ -484,20 +526,33 @@ async function generateReceiptPDF(order) {
             leftRightText(paymentMethod + ":", `${displayTotal.toFixed(2)} CZK`);
             leftRightText("Refunded amount:", `${displayTotal.toFixed(2)} CZK`);
         } else {
-            const paymentMethod = order.paymentMethod === "Card" || order.paymentMethod === "Card - Contactless"
-                ? "Card - Contactless"
-                : order.paymentMethod || "Card - Contactless";
-
-            leftRightText(paymentMethod + ":", `${totalCZK.toFixed(2)} CZK`);
-
-            if (order.givenAmount && order.givenAmount > 0) {
-                leftRightText("Given amount:", `${order.givenAmount.toFixed(2)} CZK`);
-
-                if (order.change && order.change > 0) {
-                    leftRightText("Change:", `${order.change.toFixed(2)} CZK`);
+            // Check for split payment
+            const splitPayment = parseSplitPayment(order.paymentMethod);
+            
+            if (splitPayment) {
+                // Split payment: display each method with its amount
+                for (const payment of splitPayment) {
+                    leftRightText(payment.methodName + ":", `${payment.amount.toFixed(2)} CZK`);
                 }
+                // Display total paid amount
+                leftRightText("PAID AMOUNT:", `${totalCZK.toFixed(2)} CZK`);
             } else {
-                leftRightText("Paid amount:", `${totalCZK.toFixed(2)} CZK`);
+                // Normal payment (single method)
+                const paymentMethod = order.paymentMethod === "Card" || order.paymentMethod === "Card - Contactless"
+                    ? "Card - Contactless"
+                    : order.paymentMethod || "Card - Contactless";
+
+                leftRightText(paymentMethod + ":", `${totalCZK.toFixed(2)} CZK`);
+
+                if (order.givenAmount && order.givenAmount > 0) {
+                    leftRightText("Given amount:", `${order.givenAmount.toFixed(2)} CZK`);
+
+                    if (order.change && order.change > 0) {
+                        leftRightText("Change:", `${order.change.toFixed(2)} CZK`);
+                    }
+                } else {
+                    leftRightText("Paid amount:", `${totalCZK.toFixed(2)} CZK`);
+                }
             }
         }
 

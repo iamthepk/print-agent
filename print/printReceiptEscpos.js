@@ -357,6 +357,48 @@ function padLine(left, right, charsPerLine = 48) {
 }
 
 /**
+ * Parse split payment from paymentMethod string
+ * Returns array of { methodName, amount } or null if not split payment
+ * @param {string} paymentMethod - Payment method string (may contain \n for split payment)
+ * @returns {Array<{methodName: string, amount: number}>|null} Parsed payment methods or null
+ */
+function parseSplitPayment(paymentMethod) {
+  if (!paymentMethod || typeof paymentMethod !== 'string') {
+    return null;
+  }
+  
+  // Check if it's split payment (contains newline)
+  if (!paymentMethod.includes('\n')) {
+    return null;
+  }
+  
+  // Split by newline and parse each line
+  const lines = paymentMethod.split('\n').filter(line => line.trim().length > 0);
+  const parsedMethods = [];
+  
+  for (const line of lines) {
+    // Match format: "METHOD: ...AMOUNT CZK"
+    // Example: "CASH:                30.00 CZK"
+    // Regex explanation:
+    // ^(.+?): - method name before colon (non-greedy)
+    // \s+ - one or more spaces
+    // (\d+\.\d{2}) - amount with 2 decimal places
+    // \s+CZK$ - spaces and CZK at the end
+    const match = line.match(/^(.+?):\s+(\d+\.\d{2})\s+CZK$/);
+    if (match) {
+      const methodName = match[1].trim();
+      const amount = parseFloat(match[2]);
+      if (!isNaN(amount) && amount > 0) {
+        parsedMethods.push({ methodName, amount });
+      }
+    }
+  }
+  
+  // Return null if no valid methods found (fallback to normal payment)
+  return parsedMethods.length > 0 ? parsedMethods : null;
+}
+
+/**
  * Wrap long text to multiple lines
  */
 function wrapText(text, maxWidth) {
@@ -735,24 +777,39 @@ export async function renderReceiptEscpos(payload, options = {}) {
     buffers.push(enc(padLine('Refunded amount:', `${displayTotal.toFixed(2)} CZK`, charsPerLine)));
     buffers.push(CMD.FEED_LINE);
   } else {
-    const paymentMethod = (payload.paymentMethod === 'Card' || payload.paymentMethod === 'Card - Contactless')
-      ? 'Card - Contactless'
-      : payload.paymentMethod || 'Card - Contactless';
+    // Check for split payment
+    const splitPayment = parseSplitPayment(payload.paymentMethod);
     
-    buffers.push(enc(padLine(`${paymentMethod}:`, `${totalCZK.toFixed(2)} CZK`, charsPerLine)));
-    buffers.push(CMD.FEED_LINE);
-    
-    if (payload.givenAmount && payload.givenAmount > 0) {
-      buffers.push(enc(padLine('Given amount:', `${payload.givenAmount.toFixed(2)} CZK`, charsPerLine)));
-      buffers.push(CMD.FEED_LINE);
-      
-      if (payload.change && payload.change > 0) {
-        buffers.push(enc(padLine('Change:', `${payload.change.toFixed(2)} CZK`, charsPerLine)));
+    if (splitPayment) {
+      // Split payment: display each method with its amount
+      for (const payment of splitPayment) {
+        buffers.push(enc(padLine(`${payment.methodName}:`, `${payment.amount.toFixed(2)} CZK`, charsPerLine)));
         buffers.push(CMD.FEED_LINE);
       }
-    } else {
-      buffers.push(enc(padLine('Paid amount:', `${totalCZK.toFixed(2)} CZK`, charsPerLine)));
+      // Display total paid amount
+      buffers.push(enc(padLine('PAID AMOUNT:', `${totalCZK.toFixed(2)} CZK`, charsPerLine)));
       buffers.push(CMD.FEED_LINE);
+    } else {
+      // Normal payment (single method)
+      const paymentMethod = (payload.paymentMethod === 'Card' || payload.paymentMethod === 'Card - Contactless')
+        ? 'Card - Contactless'
+        : payload.paymentMethod || 'Card - Contactless';
+      
+      buffers.push(enc(padLine(`${paymentMethod}:`, `${totalCZK.toFixed(2)} CZK`, charsPerLine)));
+      buffers.push(CMD.FEED_LINE);
+      
+      if (payload.givenAmount && payload.givenAmount > 0) {
+        buffers.push(enc(padLine('Given amount:', `${payload.givenAmount.toFixed(2)} CZK`, charsPerLine)));
+        buffers.push(CMD.FEED_LINE);
+        
+        if (payload.change && payload.change > 0) {
+          buffers.push(enc(padLine('Change:', `${payload.change.toFixed(2)} CZK`, charsPerLine)));
+          buffers.push(CMD.FEED_LINE);
+        }
+      } else {
+        buffers.push(enc(padLine('Paid amount:', `${totalCZK.toFixed(2)} CZK`, charsPerLine)));
+        buffers.push(CMD.FEED_LINE);
+      }
     }
   }
   
