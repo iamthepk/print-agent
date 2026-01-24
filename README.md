@@ -24,6 +24,211 @@ Lokální tiskový agent pro POS systém s podporou účtenek a štítků.
 
 ## 🚀 Rychlý start
 
+### 📦 Kompletní instalace na nový PC
+
+**Kontrolní seznam - co musíte mít nainstalované:**
+
+- [ ] **Node.js** (LTS verze) - https://nodejs.org/
+- [ ] **.NET 6.0 SDK** - https://dotnet.microsoft.com/download/dotnet/6.0 (pro WinSpoolerHelper.exe)
+- [ ] **ngrok** - https://ngrok.com/download (přidat do PATH)
+- [ ] **SumatraPDF** (volitelné) - https://www.sumatrapdfreader.org/ (pro PDF fallback)
+- [ ] **IrfanView** - https://www.irfanview.com/ (pro tisk štítků)
+- [ ] **Epson TM-T20III Receipt** - tiskárna připojená a nainstalovaná
+- [ ] **Brother QL-700** - tiskárna připojená a nainstalovaná
+- [ ] **.env soubor** - vytvořený a nakonfigurovaný
+- [ ] **WinSpoolerHelper.exe** - v kořenovém adresáři projektu (nebo zkompilovaný)
+
+**Požadavky pro úplně nový počítač (kde není nic nainstalované):**
+
+#### 1. Node.js a npm
+- **Stáhněte a nainstalujte Node.js** z https://nodejs.org/
+- **Doporučená verze:** LTS (Long Term Support) - aktuálně v20.x nebo v22.x
+- **Ověření instalace:**
+  ```bash
+  node --version
+  npm --version
+  ```
+
+#### 2. .NET 6.0 SDK (pro WinSpoolerHelper.exe)
+- **Stáhněte a nainstalujte .NET 6.0 SDK** z https://dotnet.microsoft.com/download/dotnet/6.0
+- **Vyberte:** .NET 6.0 SDK (ne Runtime)
+- **Ověření instalace:**
+  ```bash
+  dotnet --version
+  ```
+- **Poznámka:** Pokud máte WinSpoolerHelper.exe už v projektu, tento krok můžete přeskočit
+
+#### 3. ngrok (pro tunelování)
+- **Stáhněte ngrok** z https://ngrok.com/download
+- **Rozbalte** do složky (např. `C:\ngrok\`)
+- **Přidejte do PATH:**
+  - Otevřete "System Properties" → "Environment Variables"
+  - Přidejte cestu k ngrok do "Path" (např. `C:\ngrok`)
+- **Ověření instalace:**
+  ```bash
+  ngrok version
+  ```
+
+#### 4. SumatraPDF (volitelné - pro PDF tisk jako fallback)
+- **Stáhněte SumatraPDF** z https://www.sumatrapdfreader.org/download-free-pdf-viewer
+- **Nainstalujte** do výchozí lokace: `C:\Users\<username>\AppData\Local\SumatraPDF\`
+- **Nebo nastavte cestu** v `.env`:
+  ```env
+  SUMATRA_PATH="C:\Program Files\SumatraPDF\SumatraPDF.exe"
+  ```
+
+#### 5. IrfanView (pro tisk štítků)
+- **Stáhněte IrfanView** z https://www.irfanview.com/
+- **Nainstalujte** do výchozí lokace: `C:\Program Files\IrfanView\`
+- **Nebo nastavte cestu** v `.env`:
+  ```env
+  IRFANVIEW_PATH=C:\Program Files\IrfanView\i_view64.exe
+  ```
+
+#### 6. Tiskárny
+- **Epson TM-T20III Receipt** (pro účtenky)
+  - Připojte USB kabelem k PC
+  - Nainstalujte ovladače (obvykle automaticky přes Windows Update)
+  - Ověřte název tiskárny v Windows:
+    ```powershell
+    Get-Printer | Select-Object Name
+    ```
+- **Brother QL-700** (pro štítky)
+  - Připojte USB kabelem k PC
+  - Nainstalujte ovladače z https://support.brother.com/
+  - Ověřte název tiskárny v Windows
+
+#### 7. Nastavení projektu
+```bash
+# 1. Klonujte nebo stáhněte projekt
+cd C:\Users\<username>\Documents\GitHub\print-agent
+
+# 2. Nainstalujte Node.js závislosti
+npm install
+
+# 3. Vytvořte .env soubor (viz níže)
+# 4. Zkontrolujte nebo zkompilujte WinSpoolerHelper.exe (viz níže)
+```
+
+#### 8. Konfigurace .env souboru
+Vytvořte soubor `.env` v kořenovém adresáři projektu:
+```env
+# Tiskárny
+RECEIPT_PRINTER=EPSON TM-T20III Receipt
+STICKER_PRINTER=Brother QL-700
+
+# Metoda tisku účtenek
+RECEIPT_METHOD=escpos
+RECEIPT_FALLBACK_METHOD=pdf
+RECEIPT_STRICT_MODE=false
+
+# ESC/POS nastavení
+RECEIPT_ENCODING_MODE=utf8
+RECEIPT_CODEPAGE=cp852
+RECEIPT_CHARS_PER_LINE=48
+
+# RAW printing metoda
+RAW_SEND_METHOD=winspooler
+RAW_SEND_FALLBACK=unc_copy
+WINSPOOLER_HELPER_PATH=./WinSpoolerHelper.exe
+
+# SumatraPDF (pokud není na výchozí cestě)
+SUMATRA_PATH="C:\Users\<username>\AppData\Local\SumatraPDF\SumatraPDF.exe"
+
+# IrfanView (pokud není na výchozí cestě)
+IRFANVIEW_PATH=C:\Program Files\IrfanView\i_view64.exe
+
+# Server
+PORT=8000
+HOST=127.0.0.1
+```
+
+**Důležité:** Nahraďte `<username>` vaším skutečným uživatelským jménem ve Windows.
+
+#### 9. WinSpoolerHelper.exe
+**Option A: Použít pre-built binární (pokud je v projektu)**
+- Pokud je `WinSpoolerHelper.exe` už v kořenovém adresáři, nic nedělejte
+- Print agent ho automaticky použije
+
+**Option B: Zkompilovat ze zdrojového kódu**
+```bash
+# Přejděte do složky s C# projektem
+cd native\winspooler
+
+# Spusťte build skript
+build.bat
+
+# Zkopírujte výsledný exe do kořenového adresáře
+copy bin\Release\net6.0\win-x64\publish\WinSpoolerHelper.exe ..\..\WinSpoolerHelper.exe
+
+# Ověření
+cd ..\..
+WinSpoolerHelper.exe --check "EPSON TM-T20III Receipt"
+```
+
+#### 10. První spuštění
+```bash
+# Spusťte server
+npm start
+
+# Nebo pomocí start.bat
+start.bat
+```
+
+Server by se měl spustit na `http://localhost:8000` a ngrok by se měl automaticky spustit.
+
+**Ověření:**
+- Otevřete prohlížeč: http://localhost:8000
+- Měli byste vidět Print Agent dashboard
+- Zkontrolujte `ngrok-url.txt` pro ngrok URL
+
+#### 11. Nastavení automatického spuštění při startu PC (silent mode)
+
+**Pro automatické spuštění Print Agenta při každém přihlášení do Windows:**
+
+1. **Zkopírujte VBS skript do Startup složky:**
+   ```bash
+   copy "scripts\PrintAgent_ngrok_Services.vbs" "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\"
+   ```
+
+2. **Ověření:**
+   - Otevřete Startup složku:
+     ```bash
+     shell:startup
+     ```
+   - Měli byste vidět `PrintAgent_ngrok_Services.vbs` v seznamu
+
+3. **Jak to funguje:**
+   - Při každém přihlášení do Windows se automaticky spustí Print Agent Server
+   - Server běží na pozadí (skrytě, bez oken)
+   - Ngrok se spustí automaticky a vytvoří HTTPS tunel
+   - Ngrok URL se uloží do `ngrok-url.txt` v kořenovém adresáři projektu
+   - Status log se vytvoří v `server-status.log`
+
+4. **Kontrola, že to funguje:**
+   - Po restartu PC zkontrolujte, zda server běží:
+     ```bash
+     # Otevřete prohlížeč
+     http://localhost:8000
+     ```
+   - Zkontrolujte log soubor:
+     ```bash
+     type server-status.log
+     ```
+   - Zkontrolujte ngrok URL:
+     ```bash
+     type ngrok-url.txt
+     ```
+
+5. **Zastavení automatického spuštění:**
+   - Odstraňte soubor ze Startup složky:
+     ```bash
+     del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\PrintAgent_ngrok_Services.vbs"
+     ```
+   - Nebo použijte `stop.bat` pro zastavení běžícího serveru
+
+**Poznámka:** VBS skript spouští `start.bat` skrytě, takže server i ngrok běží na pozadí bez oken.
+
 ### Instalace závislostí
 ```bash
 npm install
@@ -495,24 +700,73 @@ await fetch(`${printAgentUrl}/print-receipt`, {
 **Přímé připojení z lokální sítě:**
 Pokud potřebujete přistupovat přímo z lokální sítě (bez ngrok), nastavte `HOST=0.0.0.0` v `.env` a použijte IP adresu nebo hostname PC.
 
-### Automatické spouštění
+### Automatické spouštění při startu PC
 
 **✅ Ngrok se nyní spouští automaticky při všech způsobech spuštění!**
 
-1. **Startup složka**:
+#### Nastavení automatického spuštění (silent mode)
+
+**Pro automatické spuštění Print Agenta při každém přihlášení do Windows:**
+
+1. **Zkopírujte VBS skript do Startup složky:**
    ```bash
    copy "scripts\PrintAgent_ngrok_Services.vbs" "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\"
    ```
-   - Spustí Print Agent i ngrok automaticky při přihlášení uživatele
-   - Běží na pozadí (skrytě)
-   - Ngrok URL se uloží do `ngrok-url.txt`
 
-2. **Manuální spuštění**:
+2. **Otevření Startup složky pro kontrolu:**
    ```bash
-   start.bat
+   # Otevřete Startup složku v Průzkumníku
+   shell:startup
    ```
-   - Spustí Print Agent a ngrok s výstupem do konzole
-   - Ngrok URL se zobrazí v konzoli a uloží do `ngrok-url.txt`
+   - Měli byste vidět `PrintAgent_ngrok_Services.vbs` v seznamu
+
+3. **Jak to funguje:**
+   - ✅ Při každém přihlášení do Windows se automaticky spustí Print Agent Server
+   - ✅ Server běží na pozadí (skrytě, bez oken)
+   - ✅ Ngrok se spustí automaticky a vytvoří HTTPS tunel
+   - ✅ Ngrok URL se uloží do `ngrok-url.txt` v kořenovém adresáři projektu
+   - ✅ Status log se vytvoří v `server-status.log`
+
+4. **Kontrola, že to funguje:**
+   - Po restartu PC zkontrolujte, zda server běží:
+     ```bash
+     # Otevřete prohlížeč
+     http://localhost:8000
+     ```
+   - Zkontrolujte log soubor:
+     ```bash
+     type server-status.log
+     ```
+   - Zkontrolujte ngrok URL:
+     ```bash
+     type ngrok-url.txt
+     ```
+   - Nebo použijte PowerShell:
+     ```powershell
+     # Zkontrolujte, zda server běží na portu 8000
+     Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue
+     ```
+
+5. **Zastavení automatického spuštění:**
+   - Odstraňte soubor ze Startup složky:
+     ```bash
+     del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\PrintAgent_ngrok_Services.vbs"
+     ```
+   - Nebo použijte `stop.bat` pro zastavení běžícího serveru:
+     ```bash
+     stop.bat
+     ```
+
+**Poznámka:** VBS skript spouští `start.bat` skrytě, takže server i ngrok běží na pozadí bez oken.
+
+#### Manuální spuštění (s konzolí)
+
+**Pokud chcete vidět výstup v konzoli:**
+```bash
+start.bat
+```
+- Spustí Print Agent a ngrok s výstupem do konzole
+- Ngrok URL se zobrazí v konzoli a uloží do `ngrok-url.txt`
 
 ## 🌐 API Endpointy
 
