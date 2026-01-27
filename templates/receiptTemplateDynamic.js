@@ -223,7 +223,7 @@ function formatDate(dateString) {
     return dateString;
 }
 
-async function generateReceiptPDF(order) {
+async function generateReceiptPDF(order, options = {}) {
     console.log('🎯 DYNAMICKÝ TEMPLATE - Začínám generovat PDF');
     console.log('🎯 Order keys:', Object.keys(order).filter(k => k.startsWith('company_')));
     console.log('🎯 useDynamicTemplate:', order.useDynamicTemplate);
@@ -263,9 +263,15 @@ async function generateReceiptPDF(order) {
 
     return new Promise((resolve, reject) => {
         const tmpPath = path.join(os.tmpdir(), `receipt-dynamic-${Date.now()}.pdf`);
+        const leftMargin = options.pdfLeftMargin ?? 0;
+        const rightMargin = options.pdfRightMargin ?? 0;
+        const baseX = leftMargin;
+        const contentWidth = 226 - leftMargin - rightMargin;
+        const rightColStart = baseX + 130;
+
         const doc = new PDFDocument({
             size: [226, 1000],
-            margins: { top: 38, bottom: 38, left: 10, right: 10 }
+            margins: { top: 38, bottom: 38, left: leftMargin, right: rightMargin }
         });
         try {
             const bebasFontPath = path.join(__dirname, '..', 'fonts', 'BebasNeue-Regular.ttf');
@@ -280,24 +286,24 @@ async function generateReceiptPDF(order) {
 
 
         const centerText = (text, fontSize = 10, font = "Bebas Neue") => {
-            doc.fontSize(fontSize).font(font).text(text, 10, doc.y, { width: 206, align: "center" });
+            doc.fontSize(fontSize).font(font).text(text, baseX, doc.y, { width: contentWidth, align: "center" });
         };
 
         const leftRightText = (leftText, rightText, fontSize = 10, font = "Bebas Neue") => {
             const startY = doc.y;
             doc.fontSize(fontSize).font(font);
-            doc.text(leftText, 10, startY, { width: 130, align: "left" });
-            doc.text(rightText, 140, startY, { width: 66, align: "right" });
+            doc.text(leftText, baseX, startY, { width: 130, align: "left" });
+            doc.text(rightText, rightColStart, startY, { width: contentWidth - 130, align: "right" });
             doc.y = startY + doc.heightOfString(leftText, { width: 130 });
         };
 
         const leftRightTextWithCurrency = (leftText, amount, currency = "CZK", fontSize = 10, font = "Bebas Neue") => {
             const startY = doc.y;
             doc.fontSize(fontSize).font(font);
-            doc.text(leftText, 10, startY, { width: 130, align: "left" });
+            doc.text(leftText, baseX, startY, { width: 130, align: "left" });
 
             const combinedText = `${amount} ${currency}`;
-            doc.text(combinedText, 140, startY, { width: 76, align: "right" });
+            doc.text(combinedText, rightColStart, startY, { width: contentWidth - 130, align: "right" });
 
             doc.y = startY + doc.heightOfString(leftText, { width: 130 });
         };
@@ -306,7 +312,7 @@ async function generateReceiptPDF(order) {
         console.log('🔍 Order Number:', { orderNumber, isNotPlaceholder: orderNumber ? isNotPlaceholder(orderNumber) : false, rawOrderNumber: order.orderNumber, rawOrder_number: order.order_number });
         if (orderNumber && isNotPlaceholder(orderNumber)) {
             const orderText = `#${orderNumber}`;
-            const maxWidth = 206;
+            const maxWidth = contentWidth;
             let fontSize = 30;
             const minFontSize = 18;
 
@@ -323,14 +329,14 @@ async function generateReceiptPDF(order) {
             }
 
 
-            doc.text(orderText, 10, doc.y, { width: maxWidth, align: "right" });
+            doc.text(orderText, baseX, doc.y, { width: maxWidth, align: "right" });
         }
 
         // === LOGO ===
         const logoStartY = doc.y;
         let logoHeight = 0;
         const logoWidthPoints = 120;
-        const centerXAdjusted = (226 - logoWidthPoints) / 2;
+        const centerXAdjusted = baseX + (contentWidth - logoWidthPoints) / 2;
         let hasLogoImage = false;
 
         if (logoBuffer) {
@@ -408,29 +414,37 @@ async function generateReceiptPDF(order) {
         console.log('🔍 Receipt Number:', { receiptNumber, isNotPlaceholder: receiptNumber ? isNotPlaceholder(receiptNumber) : false, rawReceiptNumber: order.receiptNumber, rawReceipt_number: order.receipt_number });
         if (receiptNumber && isNotPlaceholder(receiptNumber)) {
             doc.fontSize(12).font("Bebas Neue");
-            doc.text(`Receipt No.: ${receiptNumber}`);
+            const rn = `Receipt No.: ${receiptNumber}`;
+            doc.text(rn, baseX, doc.y, { width: contentWidth, align: "left" });
+            doc.y += doc.heightOfString(rn, { width: contentWidth });
         }
 
         const originalReceiptNumber = getRawValue(order, 'originalReceiptNumber') || getRawValue(order, 'original_receipt_number');
         if (originalReceiptNumber && isNotPlaceholder(originalReceiptNumber)) {
-            doc.text(`Refunded Receipt No.: ${originalReceiptNumber}`);
+            const orn = `Refunded Receipt No.: ${originalReceiptNumber}`;
+            doc.text(orn, baseX, doc.y, { width: contentWidth, align: "left" });
+            doc.y += doc.heightOfString(orn, { width: contentWidth });
         }
 
         const customerName = getRawValue(order, 'customerName') || getRawValue(order, 'customer_name');
         console.log('🔍 Customer Name:', { customerName, isNotPlaceholder: customerName ? isNotPlaceholder(customerName) : false, rawCustomerName: order.customerName, rawCustomer_name: order.customer_name });
         if (customerName && isNotPlaceholder(customerName) && customerName !== "Walk-in Customer") {
-            doc.text(`Customer: ${customerName}`);
+            const cn = `Customer: ${customerName}`;
+            doc.text(cn, baseX, doc.y, { width: contentWidth, align: "left" });
+            doc.y += doc.heightOfString(cn, { width: contentWidth });
         }
 
         const createdAt = getRawValue(order, 'createdAt') || getRawValue(order, 'created_at');
         console.log('🔍 Created At:', { createdAt, isNotPlaceholder: createdAt ? isNotPlaceholder(createdAt) : false, rawCreatedAt: order.createdAt, rawCreated_at: order.created_at });
         if (createdAt && isNotPlaceholder(createdAt)) {
             const formattedDate = formatDate(createdAt);
-            doc.text(`Date: ${formattedDate}`);
+            const dt = `Date: ${formattedDate}`;
+            doc.text(dt, baseX, doc.y, { width: contentWidth, align: "left" });
+            doc.y += doc.heightOfString(dt, { width: contentWidth });
         }
 
         doc.moveDown(0.3);
-        doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
+        doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
         doc.moveDown(0.3);
         doc.moveDown(0.5);
         let itemCount = 0;
@@ -439,30 +453,34 @@ async function generateReceiptPDF(order) {
         items.forEach((item) => {
             itemCount += item.qty || 1;
 
-            doc.fontSize(11).font("Bebas Neue");
-            doc.text(item.name || '');
-
+            const itemName = item.name || '';
             const unitPrice = item.unitPrice || item.price || 0;
             const itemTotal = (item.qty || 1) * unitPrice;
-
             const displayUnitPrice = isRefund ? -Math.abs(unitPrice) : unitPrice;
             const displayItemTotal = isRefund ? -Math.abs(itemTotal) : itemTotal;
+
+            doc.fontSize(11).font("Bebas Neue");
+            const itemStartY = doc.y;
+            doc.text(itemName, baseX, itemStartY, { width: contentWidth, align: "left" });
+            doc.y = itemStartY + doc.heightOfString(itemName, { width: contentWidth });
 
             if ((item.qty || 1) > 1) {
                 leftRightText(`${item.qty} × ${displayUnitPrice.toFixed(2)} CZK`, "");
             }
 
-            doc.text(`${displayItemTotal.toFixed(2)} CZK`, { align: "right" });
+            const priceStr = `${displayItemTotal.toFixed(2)} CZK`;
+            doc.text(priceStr, baseX, doc.y, { width: contentWidth, align: "right" });
+            doc.y = doc.y + doc.heightOfString(priceStr, { width: contentWidth });
             doc.moveDown(0.2);
         });
 
         doc.moveDown(0.3);
-        doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
+        doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
         doc.moveDown(0.3);
         leftRightText(`Items Count: ${itemCount}`, "");
 
         doc.moveDown(0.3);
-        doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
+        doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
         doc.moveDown(0.3);
         const subtotal = order.subtotal;
         if (subtotal && subtotal !== order.totalCZK) {
@@ -497,7 +515,9 @@ async function generateReceiptPDF(order) {
 
             doc.fontSize(11).font("Bebas Neue");
             doc.fillColor('#666666');
-            doc.text(`You saved ${order.discountAmount.toFixed(2)} CZK!`, { align: "center" });
+            const savedStr = `You saved ${order.discountAmount.toFixed(2)} CZK!`;
+            doc.text(savedStr, baseX, doc.y, { width: contentWidth, align: "center" });
+            doc.y += doc.heightOfString(savedStr, { width: contentWidth });
             doc.fillColor('#000000');
             doc.fontSize(13);
         }
@@ -511,11 +531,13 @@ async function generateReceiptPDF(order) {
         if (order.totalEUR) {
             doc.fontSize(12).font("Bebas Neue");
             const displayTotalEUR = isRefund ? -Math.abs(order.totalEUR) : order.totalEUR;
-            doc.text(`= ${displayTotalEUR.toFixed(2)} EUR`, { align: "right" });
+            const eurStr = `= ${displayTotalEUR.toFixed(2)} EUR`;
+            doc.text(eurStr, baseX, doc.y, { width: contentWidth, align: "right" });
+            doc.y += doc.heightOfString(eurStr, { width: contentWidth });
         }
 
         doc.moveDown(0.3);
-        doc.moveTo(10, doc.y).lineTo(216, doc.y).stroke();
+        doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
         doc.moveDown(0.3);
         doc.moveDown(0.5);
 
@@ -576,7 +598,7 @@ async function generateReceiptPDF(order) {
 
             try {
                 const qrWidthPoints = 120;
-                const qrCenterXAdjusted = (226 - qrWidthPoints) / 2;
+                const qrCenterXAdjusted = baseX + (contentWidth - qrWidthPoints) / 2;
 
                 doc.image(qrCodeBuffer, qrCenterXAdjusted, doc.y, {
                     width: qrWidthPoints,

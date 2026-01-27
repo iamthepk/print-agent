@@ -640,29 +640,35 @@ export async function renderReceiptEscpos(payload, options = {}) {
   items.forEach((item) => {
     itemCount += item.qty || item.quantity || 1;
     
-    const itemName = item.name || '';
     const quantity = item.quantity || item.qty || 1;
     const unitPrice = item.unitPrice || item.price || 0;
     const itemTotal = quantity * unitPrice;
-    
-    // Item name (bold)
+    const displayItemTotal = isRefund ? -Math.abs(itemTotal) : itemTotal;
+
+    // Build full item text: name + options/modifiers (each line wrapped to charsPerLine)
+    const namePart = item.name || '';
+    const opts = item.options || item.modifiers || item.choices || [];
+    const optsText = Array.isArray(opts) ? opts.map(o => (typeof o === 'string' ? o : (o && o.name) || '')).filter(Boolean).join('\n') : '';
+    const fullText = optsText ? `${namePart}\n${optsText}` : namePart;
+
+    // Item name + options: each line wrapped, fixed width, no printer-induced indent
     buffers.push(CMD.BOLD_ON);
-    buffers.push(enc(itemName));
+    const lines = fullText.split(/\r?\n/).flatMap(line => wrapText(line.trim(), charsPerLine));
+    for (const line of lines) {
+      if (line) buffers.push(enc(line));
+      buffers.push(CMD.FEED_LINE);
+    }
     buffers.push(CMD.BOLD_OFF);
-    buffers.push(CMD.FEED_LINE);
     
-    // Quantity × price (if quantity > 1)
+    // Quantity × price (if quantity > 1) – fixed-width line
     const displayUnitPrice = isRefund ? -Math.abs(unitPrice) : unitPrice;
     if (quantity > 1) {
-      buffers.push(enc(`${quantity} × ${displayUnitPrice.toFixed(2)} CZK`));
+      buffers.push(enc(padLine(`${quantity} × ${displayUnitPrice.toFixed(2)} CZK`, '', charsPerLine)));
       buffers.push(CMD.FEED_LINE);
     }
     
-    // Item total (right-aligned)
-    const displayItemTotal = isRefund ? -Math.abs(itemTotal) : itemTotal;
-    buffers.push(CMD.ALIGN_RIGHT);
-    buffers.push(enc(`${displayItemTotal.toFixed(2)} CZK`));
-    buffers.push(CMD.ALIGN_LEFT);
+    // Item total: same width as rest of receipt (padLine keeps price on right)
+    buffers.push(enc(padLine('', `${displayItemTotal.toFixed(2)} CZK`, charsPerLine)));
     buffers.push(CMD.FEED_LINE);
   });
   

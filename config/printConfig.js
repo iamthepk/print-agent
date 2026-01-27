@@ -98,6 +98,18 @@ export const RAW_SEND_FALLBACK = process.env.RAW_SEND_FALLBACK || 'unc_copy';
 export const WINSPOOLER_HELPER_PATH = process.env.WINSPOOLER_HELPER_PATH || './WinSpoolerHelper.exe';
 
 // ============================================
+// PDF RECEIPT MARGINS (80mm thermal)
+// ============================================
+
+/**
+ * RECEIPT_PDF_LEFT_MARGIN, RECEIPT_PDF_RIGHT_MARGIN: PDF layout (points)
+ * Default 0/0 = full width (226pt for 80mm), content spread across entire receipt.
+ * Increase only if your printer/driver crops edges.
+ */
+export const RECEIPT_PDF_LEFT_MARGIN = parseInt(process.env.RECEIPT_PDF_LEFT_MARGIN ?? '0', 10);
+export const RECEIPT_PDF_RIGHT_MARGIN = parseInt(process.env.RECEIPT_PDF_RIGHT_MARGIN ?? '0', 10);
+
+// ============================================
 // PDF/SUMATRA SETTINGS (LEGACY)
 // ============================================
 
@@ -128,6 +140,10 @@ export const printConfig = {
   RAW_SEND_FALLBACK,
   WINSPOOLER_HELPER_PATH,
   
+  // PDF receipt margins (fix horizontal shift)
+  RECEIPT_PDF_LEFT_MARGIN,
+  RECEIPT_PDF_RIGHT_MARGIN,
+
   // Legacy PDF settings
   SUMATRA_PATH
 };

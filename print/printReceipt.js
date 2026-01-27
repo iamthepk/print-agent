@@ -95,8 +95,11 @@ async function printReceiptPDF(order) {
     console.log(`📄 Printer: ${printConfig.RECEIPT_PRINTER}`);
     console.log(`📄 ============================================`);
 
-    // Generate PDF
-    const pdfPath = await generateReceiptPDF(order);
+    // Generate PDF (with configurable margins to fix horizontal shift after WMIC→PowerShell/driver changes)
+    const pdfPath = await generateReceiptPDF(order, {
+      pdfLeftMargin: printConfig.RECEIPT_PDF_LEFT_MARGIN,
+      pdfRightMargin: printConfig.RECEIPT_PDF_RIGHT_MARGIN
+    });
     console.log(`📄 PDF generated: ${pdfPath}`);
 
     // Wait for file to be fully written

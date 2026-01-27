@@ -609,6 +609,10 @@ HOST=127.0.0.1
 - ⚠️ **Limit délky** ~280mm (fixní výška PDF)
 - ⚠️ **Pomalejší** - generování PDF + SumatraPDF overhead
 
+**Ladění okrajů PDF účtenky:**
+- `RECEIPT_PDF_LEFT_MARGIN=0`, `RECEIPT_PDF_RIGHT_MARGIN=0` – výchozí, plná šířka (226 pt pro 80 mm)
+- Zvyšte jen když tiskárna/driver ořezává okraje (např. 10/10).
+
 **Doporučené nastavení pro produkci:**
 ```env
 RECEIPT_METHOD=escpos              # Primární metoda
