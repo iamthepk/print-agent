@@ -71,6 +71,28 @@ function isNotPlaceholder(value) {
 }
 
 /**
+ * Resolve display name for payment method. If POS sends ID instead of name,
+ * and order contains paymentMethods map (id -> name), look up the name.
+ * @param {Object} order - Order object
+ * @returns {string} Payment method name for display
+ */
+function resolvePaymentMethodName(order) {
+  const raw = getRawValue(order, 'paymentMethod') ?? getRawValue(order, 'payment_method');
+  if (raw == null || raw === '') return 'Card';
+  const map = order.paymentMethods || order.payment_methods;
+  if (map && (typeof raw === 'number' || (typeof raw === 'string' && /^\d+$/.test(String(raw).trim())))) {
+    const id = typeof raw === 'number' ? raw : String(raw).trim();
+    const name = typeof map === 'object' && !Array.isArray(map) ? map[id] : null;
+    if (typeof name === 'string' && name.length > 0) return name;
+    if (Array.isArray(map)) {
+      const entry = map.find((m) => String(m?.id) === id || String(m?.id) === String(raw));
+      if (entry && typeof entry.name === 'string') return entry.name;
+    }
+  }
+  return typeof raw === 'string' ? raw : String(raw);
+}
+
+/**
  * Parse split payment from paymentMethod string
  * Returns array of { methodName, amount } or null if not split payment
  * @param {string} paymentMethod - Payment method string (may contain \n for split payment)
@@ -544,25 +566,28 @@ async function generateReceiptPDF(order, options = {}) {
         doc.fontSize(15).font("Bebas Neue");
 
         if (isRefund) {
-            const paymentMethod = order.paymentMethod || "Card";
+            const paymentMethod = resolvePaymentMethodName(order);
             leftRightText(paymentMethod + ":", `${displayTotal.toFixed(2)} CZK`);
             leftRightText("Refunded amount:", `${displayTotal.toFixed(2)} CZK`);
         } else {
-            // Check for split payment
-            const splitPayment = parseSplitPayment(order.paymentMethod);
+            // Check for split payment (use raw string – split format uses method names)
+            const rawPayment = getRawValue(order, 'paymentMethod') ?? getRawValue(order, 'payment_method');
+            const splitPayment = parseSplitPayment(rawPayment != null ? String(rawPayment) : null);
             
             if (splitPayment) {
-                // Split payment: display each method with its amount
+                // Split payment: resolve each methodName if it looks like ID (optional paymentMethods map)
                 for (const payment of splitPayment) {
-                    leftRightText(payment.methodName + ":", `${payment.amount.toFixed(2)} CZK`);
+                    const displayName = resolvePaymentMethodName({ ...order, paymentMethod: payment.methodName });
+                    leftRightText(displayName + ":", `${payment.amount.toFixed(2)} CZK`);
                 }
                 // Display total paid amount
                 leftRightText("PAID AMOUNT:", `${totalCZK.toFixed(2)} CZK`);
             } else {
                 // Normal payment (single method)
-                const paymentMethod = order.paymentMethod === "Card" || order.paymentMethod === "Card - Contactless"
+                const paymentMethodResolved = resolvePaymentMethodName(order);
+                const paymentMethod = paymentMethodResolved === "Card" || paymentMethodResolved === "Card - Contactless"
                     ? "Card - Contactless"
-                    : order.paymentMethod || "Card - Contactless";
+                    : paymentMethodResolved || "Card - Contactless";
 
                 leftRightText(paymentMethod + ":", `${totalCZK.toFixed(2)} CZK`);
 

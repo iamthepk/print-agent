@@ -925,7 +925,8 @@ Refunded amount:        -89.00 CZK
                                      // + Zobrazí se text "You saved 20.00 CZK!"
   
   // === PLATBA ===
-  "paymentMethod": "Hotovost",       // Metoda platby
+  "paymentMethod": "Hotovost",       // Metoda platby – doporučeno posílat NÁZEV (ne ID)
+  "paymentMethods": {"1": "Hotovost", "2": "Karta"},  // volitelné: mapa id→název; pokud POS pošle paymentMethod: 1, použije se tento název
   "givenAmount": 200.00,             // Částka od zákazníka (jen hotovost)
   "change": 42.00,                   // Vráceno (automaticky se spočítá pokud chybí)
   
@@ -965,6 +966,7 @@ Refunded amount:        -89.00 CZK
 - **Formátování data**: Automaticky se přeformátuje na `dd-mm-yyyy hh:mm:ss` bez ohledu na vstupní formát
 - **Velikosti**: Logo a QR kód mají pevnou velikost 80 bodů (nastaveno v Print Agentu)
 - **OrderNumber**: Automaticky se přizpůsobí velikost písma pro dlouhá čísla, aby se vešla na účtenku
+- **Platební metoda (ID vs název)**: Na účtence se zobrazuje to, co přijde v `paymentMethod`. Pokud POS někdy posílá ID místo názvu, **oprava patří do POS** – v payloadu má být vždy název metody. Print-agent navíc podporuje volitelné pole `paymentMethods` (objekt `{ "1": "Hotovost", "2": "Karta" }` nebo pole `[{ id: 1, name: "Hotovost" }, ...]`). Když je `paymentMethod` číslo nebo číselný string a `paymentMethods` je poslané, vykreslí se odpovídající název.
 
 ---
 

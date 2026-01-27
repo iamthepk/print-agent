@@ -357,6 +357,29 @@ function padLine(left, right, charsPerLine = 48) {
 }
 
 /**
+ * Resolve display name for payment method. If POS sends ID instead of name,
+ * and payload contains paymentMethods map (id -> name), look up the name.
+ * @param {Object} payload - Receipt payload (order)
+ * @param {string|number} [overrideRaw] - Optional raw value to resolve (e.g. for split items)
+ * @returns {string} Payment method name for display
+ */
+function resolvePaymentMethodName(payload, overrideRaw) {
+  const raw = overrideRaw !== undefined ? overrideRaw : (payload.paymentMethod ?? payload.payment_method);
+  if (raw == null || raw === '') return 'Card';
+  const map = payload.paymentMethods || payload.payment_methods;
+  if (map && (typeof raw === 'number' || (typeof raw === 'string' && /^\d+$/.test(String(raw).trim())))) {
+    const id = typeof raw === 'number' ? raw : String(raw).trim();
+    const name = typeof map === 'object' && !Array.isArray(map) ? map[id] : null;
+    if (typeof name === 'string' && name.length > 0) return name;
+    if (Array.isArray(map)) {
+      const entry = map.find((m) => String(m?.id) === id || String(m?.id) === String(raw));
+      if (entry && typeof entry.name === 'string') return entry.name;
+    }
+  }
+  return typeof raw === 'string' ? raw : String(raw);
+}
+
+/**
  * Parse split payment from paymentMethod string
  * Returns array of { methodName, amount } or null if not split payment
  * @param {string} paymentMethod - Payment method string (may contain \n for split payment)
@@ -777,29 +800,28 @@ export async function renderReceiptEscpos(payload, options = {}) {
   buffers.push(CMD.DOUBLE_HEIGHT_ON);
   
   if (isRefund) {
-    const paymentMethod = payload.paymentMethod || 'Card';
+    const paymentMethod = resolvePaymentMethodName(payload);
     buffers.push(enc(padLine(`${paymentMethod}:`, `${displayTotal.toFixed(2)} CZK`, charsPerLine)));
     buffers.push(CMD.FEED_LINE);
     buffers.push(enc(padLine('Refunded amount:', `${displayTotal.toFixed(2)} CZK`, charsPerLine)));
     buffers.push(CMD.FEED_LINE);
   } else {
-    // Check for split payment
-    const splitPayment = parseSplitPayment(payload.paymentMethod);
+    const rawPayment = payload.paymentMethod ?? payload.payment_method;
+    const splitPayment = parseSplitPayment(rawPayment != null ? String(rawPayment) : null);
     
     if (splitPayment) {
-      // Split payment: display each method with its amount
       for (const payment of splitPayment) {
-        buffers.push(enc(padLine(`${payment.methodName}:`, `${payment.amount.toFixed(2)} CZK`, charsPerLine)));
+        const displayName = resolvePaymentMethodName(payload, payment.methodName);
+        buffers.push(enc(padLine(`${displayName}:`, `${payment.amount.toFixed(2)} CZK`, charsPerLine)));
         buffers.push(CMD.FEED_LINE);
       }
-      // Display total paid amount
       buffers.push(enc(padLine('PAID AMOUNT:', `${totalCZK.toFixed(2)} CZK`, charsPerLine)));
       buffers.push(CMD.FEED_LINE);
     } else {
-      // Normal payment (single method)
-      const paymentMethod = (payload.paymentMethod === 'Card' || payload.paymentMethod === 'Card - Contactless')
+      const paymentMethodResolved = resolvePaymentMethodName(payload);
+      const paymentMethod = (paymentMethodResolved === 'Card' || paymentMethodResolved === 'Card - Contactless')
         ? 'Card - Contactless'
-        : payload.paymentMethod || 'Card - Contactless';
+        : paymentMethodResolved || 'Card - Contactless';
       
       buffers.push(enc(padLine(`${paymentMethod}:`, `${totalCZK.toFixed(2)} CZK`, charsPerLine)));
       buffers.push(CMD.FEED_LINE);
