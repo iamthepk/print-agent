@@ -22,7 +22,7 @@ if %errorlevel% equ 0 (
     powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0start-ngrok.ps1"
 ) else (
     echo Server se nespustil
-    pause
+    if not "%1"=="SILENT" pause
     exit /b 1
 )
 

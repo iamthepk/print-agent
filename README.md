@@ -186,24 +186,22 @@ Server by se měl spustit na `http://localhost:8000` a ngrok by se měl automati
 
 **Pro automatické spuštění Print Agenta při každém přihlášení do Windows:**
 
-1. **Zkopírujte VBS skript do Startup složky:**
+1. **Doporučený způsob – zkratka do Startup (vždy najde projekt):**
    ```bash
-   copy "scripts\PrintAgent_ngrok_Services.vbs" "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\"
+   # Z kořene projektu spusťte:
+   scripts\install-startup.bat
    ```
+   Skript vytvoří zkratku „Print Agent“ ve složce Po spuštění. Zkratka ukazuje na VBS v projektu, takže při přihlášení se vždy spustí správný `start.bat`.
 
-2. **Ověření:**
-   - Otevřete Startup složku:
-     ```bash
-     shell:startup
-     ```
-   - Měli byste vidět `PrintAgent_ngrok_Services.vbs` v seznamu
+2. **Ruční vytvoření zkratky:**
+   - Pravým tlačítkem na `scripts\PrintAgent_ngrok_Services.vbs` → **Vytvořit zástupce**
+   - Zástupce přemístěte do složky Po spuštění (`shell:startup` v průzkumníku)
+   - **Nekopírujte** samotný VBS do Startup – po zkopírování skript nebude vědět, kde je projekt, a Print Agent se nespustí.
 
 3. **Jak to funguje:**
-   - Při každém přihlášení do Windows se automaticky spustí Print Agent Server
-   - Server běží na pozadí (skrytě, bez oken)
-   - Ngrok se spustí automaticky a vytvoří HTTPS tunel
-   - Ngrok URL se uloží do `ngrok-url.txt` v kořenovém adresáři projektu
-   - Status log se vytvoří v `server-status.log`
+   - Při každém přihlášení se spustí VBS (skrytě) a ten spustí `start.bat SILENT`
+   - Server běží na pozadí (bez oken), ngrok se spustí automaticky
+   - Ngrok URL se uloží do `ngrok-url.txt`, status do `server-status.log`
 
 4. **Kontrola, že to funguje:**
    - Po restartu PC zkontrolujte, zda server běží:
@@ -221,13 +219,10 @@ Server by se měl spustit na `http://localhost:8000` a ngrok by se měl automati
      ```
 
 5. **Zastavení automatického spuštění:**
-   - Odstraňte soubor ze Startup složky:
-     ```bash
-     del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\PrintAgent_ngrok_Services.vbs"
-     ```
-   - Nebo použijte `stop.bat` pro zastavení běžícího serveru
+   - Odstraňte zkratku „Print Agent“ ze složky Po spuštění (`shell:startup`)
+   - Nebo použijte `scripts\stop.bat` pro zastavení běžícího serveru
 
-**Poznámka:** VBS skript spouští `start.bat` skrytě, takže server i ngrok běží na pozadí bez oken.
+**Poznámka:** VBS spouští `start.bat` skrytě s parametrem SILENT (bez čekání na klávesu při chybě), takže server i ngrok běží na pozadí bez oken.
 
 ### Instalace závislostí
 ```bash
@@ -559,7 +554,8 @@ print-agent/
 ├── 📁 templates/                     # Šablony pro tisk
 │   └── receiptTemplateDynamic.js     # Dynamická šablona účtenky
 ├── 📁 scripts/                       # Spouštěcí a správní skripty
-│   ├── PrintAgent_ngrok_Services.vbs # VBS skript pro automatické spuštění při přihlášení (silent)
+│   ├── PrintAgent_ngrok_Services.vbs # VBS pro automatické spuštění při přihlášení (silent)
+│   ├── install-startup.bat           # Vytvoření zkratky do Po spuštění (Startup)
 │   └── restart.bat                   # Restart serveru i ngrok
 ├── 📄 start.bat                      # Hlavní spouštěcí skript (server + ngrok)
 ├── 📄 stop.bat                       # Zastavení serveru i ngrok
@@ -708,56 +704,37 @@ Pokud potřebujete přistupovat přímo z lokální sítě (bez ngrok), nastavte
 
 **Pro automatické spuštění Print Agenta při každém přihlášení do Windows:**
 
-1. **Zkopírujte VBS skript do Startup složky:**
+1. **Doporučený způsob – zkratka do Startup:**
    ```bash
-   copy "scripts\PrintAgent_ngrok_Services.vbs" "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\"
+   # Z kořene projektu spusťte:
+   scripts\install-startup.bat
    ```
+   Vytvoří zkratku „Print Agent“ ve složce Po spuštění. Zkratka ukazuje na VBS v projektu, takže při každém přihlášení se spolehlivě spustí Print Agent.
 
-2. **Otevření Startup složky pro kontrolu:**
-   ```bash
-   # Otevřete Startup složku v Průzkumníku
-   shell:startup
-   ```
-   - Měli byste vidět `PrintAgent_ngrok_Services.vbs` v seznamu
+2. **Ruční vytvoření zkratky:**
+   - Pravým tlačítkem na `scripts\PrintAgent_ngrok_Services.vbs` → **Vytvořit zástupce**
+   - Zástupce přemístěte do složky Po spuštění (`shell:startup`)
+   - **Nekopírujte** samotný VBS do Startup – po zkopírování skript nenajde projekt a Print Agent se nespustí.
 
 3. **Jak to funguje:**
-   - ✅ Při každém přihlášení do Windows se automaticky spustí Print Agent Server
-   - ✅ Server běží na pozadí (skrytě, bez oken)
-   - ✅ Ngrok se spustí automaticky a vytvoří HTTPS tunel
-   - ✅ Ngrok URL se uloží do `ngrok-url.txt` v kořenovém adresáři projektu
-   - ✅ Status log se vytvoří v `server-status.log`
+   - ✅ Při každém přihlášení se spustí VBS (skrytě) a ten spustí `start.bat SILENT`
+   - ✅ Server běží na pozadí (bez oken), ngrok se spustí automaticky
+   - ✅ Ngrok URL → `ngrok-url.txt`, status → `server-status.log`
 
 4. **Kontrola, že to funguje:**
    - Po restartu PC zkontrolujte, zda server běží:
      ```bash
-     # Otevřete prohlížeč
      http://localhost:8000
      ```
-   - Zkontrolujte log soubor:
-     ```bash
-     type server-status.log
-     ```
-   - Zkontrolujte ngrok URL:
-     ```bash
-     type ngrok-url.txt
-     ```
-   - Nebo použijte PowerShell:
-     ```powershell
-     # Zkontrolujte, zda server běží na portu 8000
-     Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue
-     ```
+   - Zkontrolujte log: `type server-status.log`
+   - Ngrok URL: `type ngrok-url.txt`
+   - PowerShell: `Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue`
 
 5. **Zastavení automatického spuštění:**
-   - Odstraňte soubor ze Startup složky:
-     ```bash
-     del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\PrintAgent_ngrok_Services.vbs"
-     ```
-   - Nebo použijte `stop.bat` pro zastavení běžícího serveru:
-     ```bash
-     stop.bat
-     ```
+   - Odstraňte zkratku „Print Agent“ ze složky Po spuštění (`shell:startup`)
+   - Nebo `scripts\stop.bat` pro zastavení běžícího serveru
 
-**Poznámka:** VBS skript spouští `start.bat` skrytě, takže server i ngrok běží na pozadí bez oken.
+**Poznámka:** VBS spouští `start.bat` skrytě s parametrem SILENT, takže server i ngrok běží na pozadí bez oken a při chybě se skript nečeká na stisk klávesy.
 
 #### Manuální spuštění (s konzolí)
 

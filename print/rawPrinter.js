@@ -322,18 +322,29 @@ export async function checkPrinterAvailability(printerName) {
           method: 'winspooler'
         };
       } catch (helperError) {
-        // WinSpooler check failed, fall back to wmic
-        console.warn('⚠️ WinSpooler check failed, trying wmic:', helperError.message);
+        // WinSpooler check failed, fall back to PowerShell (WMIC removed on Win11)
+        console.warn('⚠️ WinSpooler check failed, trying PowerShell:', helperError.message);
       }
     }
 
-    // Fallback: wmic check
-    const command = `wmic printer where "name='${printerName}'" get name,workoffline,status`;
-    const { stdout } = await execAsync(command, { windowsHide: true });
+    // Fallback: PowerShell Get-CimInstance (replaces wmic on Windows 11)
+    const safeName = String(printerName).replace(/'/g, "''");
+    const command = `powershell -NoProfile -Command "Get-CimInstance -ClassName Win32_Printer -Filter \\\"Name='${safeName}'\\\" | Select-Object Name, WorkOffline, PrinterStatus | ConvertTo-Json -Compress"`;
+    const { stdout } = await execAsync(command, { windowsHide: true, timeout: 10000 });
 
-    const output = stdout.toLowerCase();
-    const printerFound = output.includes(printerName.toLowerCase());
-    const isOffline = output.includes('workoffline') && output.includes('true');
+    const raw = (stdout || '').trim();
+    let printerFound = false;
+    let isOffline = false;
+    if (raw) {
+      try {
+        let data = JSON.parse(raw);
+        if (Array.isArray(data) && data.length) data = data[0];
+        printerFound = !!data && (data.Name === printerName || (data.Name && data.Name.toUpperCase() === printerName.toUpperCase()));
+        isOffline = !!data && data.WorkOffline === true;
+      } catch (_) {
+        printerFound = false;
+      }
+    }
     const isAvailable = printerFound && !isOffline;
 
     return {
@@ -341,7 +352,7 @@ export async function checkPrinterAvailability(printerName) {
       found: printerFound,
       offline: isOffline,
       name: printerName,
-      method: 'wmic'
+      method: 'powershell'
     };
   } catch (error) {
     return {
@@ -352,6 +363,30 @@ export async function checkPrinterAvailability(printerName) {
       error: error.message,
       method: 'error'
     };
+  }
+}
+
+/**
+ * Open cash drawer via ESC/POS drawer kick.
+ * ESC p m t1 t2: m=0 pin 2, m=1 pin 5; t1,t2 in 2ms units. Sends both pins in one job.
+ * Uses WinSpooler first; if that fails (e.g. missing WinSpoolerHelper.dll), falls back to UNC copy.
+ *
+ * @param {string} printerName - Windows printer name (receipt printer with drawer)
+ * @returns {Promise<Object>} Result with status
+ */
+export async function openDrawer(printerName) {
+  const drawerPin2 = Buffer.from([0x1B, 0x70, 0x00, 0x32, 0x32]); // pin 2, 100 ms
+  const drawerPin5 = Buffer.from([0x1B, 0x70, 0x01, 0x32, 0x32]); // pin 5, 100 ms
+  const drawerCommand = Buffer.concat([drawerPin2, drawerPin5]);
+
+  try {
+    return await sendRawToPrinterWinSpooler(drawerCommand, printerName, 'Drawer kick');
+  } catch (winErr) {
+    const dllOrExeMissing = /\.dll|does not exist|nelze nalézt/i.test(winErr?.message ?? '');
+    if (dllOrExeMissing) {
+      console.warn('⚠️ WinSpooler failed for drawer (e.g. missing DLL), trying UNC copy…', winErr?.message);
+    }
+    return await sendRawToPrinterUncCopy(drawerCommand, printerName);
   }
 }
 
@@ -386,6 +421,7 @@ export default {
   sendRawToPrinter,
   sendRawToPrinterWinSpooler,
   sendRawToPrinterUncCopy,
+  openDrawer,
   checkPrinterAvailability,
   canOpenPrinter,
   isWinSpoolerHelperAvailable

@@ -1,43 +1,45 @@
 @echo off
-REM Build script for WinSpoolerHelper.exe
-REM Requires .NET 6.0 SDK or later
+REM Build script for WinSpoolerHelper.exe (single-file, no DLL)
+REM Requires .NET 10.0 SDK (or edit WinSpoolerHelper.csproj for net8.0)
+
+cd /d "%~dp0"
 
 echo ============================================
-echo Building WinSpoolerHelper.exe
+echo Building WinSpoolerHelper.exe (single-file)
 echo ============================================
 echo.
 
-REM Check if dotnet is available
 where dotnet >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: dotnet CLI not found in PATH
-    echo Please install .NET 6.0 SDK or later from:
-    echo https://dotnet.microsoft.com/download
+    echo Install .NET SDK from https://dotnet.microsoft.com/download
     exit /b 1
 )
 
-echo Checking .NET version...
 dotnet --version
 echo.
 
-echo Building release configuration (self-contained, single-file)...
-dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishReadyToRun=true
+echo Publishing: self-contained, single-file (no DLL)...
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true
 
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo Build FAILED!
+    exit /b 1
+)
+
+set "OUT=bin\Release\net10.0\win-x64\publish\WinSpoolerHelper.exe"
+if not exist "%OUT%" (
+    echo ERROR: Output not found at %OUT%
+    exit /b 1
+)
+
+echo.
+echo Copying to print-agent root...
+copy /Y "%OUT%" "..\..\WinSpoolerHelper.exe" >nul
 if %ERRORLEVEL% EQU 0 (
     echo.
-    echo ============================================
-    echo Build SUCCESS!
-    echo ============================================
-    echo.
-    echo Output: bin\Release\net6.0\win-x64\publish\WinSpoolerHelper.exe
-    echo.
-    echo Copy to print agent root:
-    echo copy bin\Release\net6.0\win-x64\publish\WinSpoolerHelper.exe ..\..\WinSpoolerHelper.exe
-    echo.
+    echo SUCCESS: WinSpoolerHelper.exe updated in project root. No DLL required.
 ) else (
-    echo.
-    echo ============================================
-    echo Build FAILED!
-    echo ============================================
-    exit /b 1
+    echo Copy failed. Manually: copy "%OUT%" "..\..\WinSpoolerHelper.exe"
 )

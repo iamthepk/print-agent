@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { printReceipt } from './print/printReceipt.js'
 import { printSticker } from './print/printSticker.js'
-import { checkPrinterAvailability, canOpenPrinter, isWinSpoolerHelperAvailable } from './print/rawPrinter.js'
+import { checkPrinterAvailability, canOpenPrinter, isWinSpoolerHelperAvailable, openDrawer } from './print/rawPrinter.js'
 import { printConfig } from './config/printConfig.js'
 import fs from 'fs'
 
@@ -1024,15 +1024,28 @@ app.get('/check-printer', async (req, res) => {
         const { promisify } = await import('util');
         const execAsync = promisify(exec);
 
-        // Zkontrolujeme dostupnost obou tiskáren
+        // Zkontrolujeme dostupnost obou tiskáren (PowerShell Get-CimInstance – WMIC není na Win11)
         const checkPrinter = async (printerName) => {
-            const command = `wmic printer where "name='${printerName}'" get name,workoffline,status`;
+            const safeName = String(printerName).replace(/'/g, "''");
+            const command = `powershell -NoProfile -Command "Get-CimInstance -ClassName Win32_Printer -Filter \\\"Name='${safeName}'\\\" | Select-Object Name, WorkOffline, PrinterStatus | ConvertTo-Json -Compress"`;
             try {
-                const { stdout } = await execAsync(command, { windowsHide: true });
-                const output = stdout.toLowerCase();
-                const printerFound = output.includes(printerName.toLowerCase());
-                const isOffline = output.includes('workoffline') && output.includes('true');
-                const hasUnknownStatus = output.includes('unknown');
+                const { stdout } = await execAsync(command, { windowsHide: true, timeout: 10000 });
+                const raw = (stdout || '').trim();
+                let printerFound = false;
+                let isOffline = false;
+                let hasUnknownStatus = false;
+                if (raw && raw !== '') {
+                    try {
+                        let data = JSON.parse(raw);
+                        if (Array.isArray(data) && data.length) data = data[0];
+                        printerFound = !!data && (data.Name === printerName || (data.Name && data.Name.toUpperCase() === printerName.toUpperCase()));
+                        isOffline = !!data && data.WorkOffline === true;
+                        // PrinterStatus: 1=Other, 2=Unknown, 3=Idle, 4=Printing, 5=Warmup...
+                        hasUnknownStatus = !!data && data.PrinterStatus === 2;
+                    } catch (_) {
+                        printerFound = false;
+                    }
+                }
                 const isAvailable = printerFound && !isOffline;
 
                 return {
@@ -1107,47 +1120,36 @@ app.post('/restart-server', async (req, res) => {
         // Pošleme odpověď a pak spustíme restart script
         setTimeout(() => {
             try {
-                console.log('🔄 Restartování serveru pomocí restart scriptu...');
-                const restartScript = path.join(__dirname, 'scripts', 'restart.bat');
+                console.log('🔄 Restartování serveru (silent)...');
+                const restartVbs = path.join(__dirname, 'scripts', 'run-restart-silent.vbs');
                 
-                // Zkontrolujeme, že script existuje
-                if (!fs.existsSync(restartScript)) {
-                    console.error('❌ Restart script neexistuje:', restartScript);
+                if (!fs.existsSync(restartVbs)) {
+                    console.error('❌ run-restart-silent.vbs neexistuje:', restartVbs);
                     setTimeout(() => process.exit(1), 1000);
                     return;
                 }
 
-                // Použijeme jednoduchý přístup - spustíme restart.bat přímo
-                // Escapujeme cesty pro Windows
-                const escapedScript = restartScript.replace(/\\/g, '\\\\');
-                const command = `"${restartScript}"`;
+                // VBS spustí restart.bat skrytě (bez CMD okna), restart.bat pak spustí start.bat přes run-start-silent.vbs
+                const command = `wscript "${restartVbs}"`;
                 
-                console.log('📋 Spouštím restart script:', restartScript);
-                console.log('📋 Working directory:', __dirname);
+                console.log('📋 Spouštím restart (silent):', restartVbs);
                 
                 exec(command, {
                     windowsHide: true,
-                    cwd: __dirname,
-                    detached: true,
-                    stdio: 'ignore'
+                    cwd: __dirname
                 }, (error) => {
                     if (error) {
                         console.error('❌ Chyba pri spousteni restart scriptu:', error);
-                        console.error('Error code:', error.code);
-                        console.error('Error signal:', error.signal);
                     } else {
                         console.log('✅ Restart script spuštěn úspěšně');
                     }
                 });
 
-                console.log('✅ Restart script spuštěn, ukončuji tento proces za 2 sekundy...');
-
-                // Počkáme chvíli a pak ukončíme tento proces
-                // Restart script ho zastaví a spustí znovu
+                // Restart script (stop + start) zabije tento proces; process.exit je záloha
                 setTimeout(() => {
                     console.log('🔄 Ukončuji tento proces...');
                     process.exit(0);
-                }, 2000);
+                }, 3000);
             } catch (error) {
                 console.error('❌ Chyba pri spousteni restart scriptu:', error);
                 // Pokud selže restart script, alespoň ukončíme proces
@@ -1196,89 +1198,32 @@ app.get('/ngrok-url', async (req, res) => {
     }
 });
 
-// Endpoint pro otevření pokladní zásuvky
+// Endpoint pro otevření pokladní zásuvky – pouze WinSpooler (žádný type/UNC)
 app.post('/open-drawer', async (req, res) => {
     try {
-        console.log('Pokus o otevreni pokladni zasuvky...')
-        console.log('Pouzivana tiskarna:', RECEIPT_PRINTER)
+        console.log('Pokus o otevreni pokladni zasuvky...');
+        console.log('Pouzivana tiskarna:', RECEIPT_PRINTER);
 
-        const { exec } = await import('child_process');
-        const fs = await import('fs');
+        await openDrawer(RECEIPT_PRINTER);
 
-        // Použijeme jednoduchý přístup s echo a přesměrováním na tiskárnu
-        // ESC/POS příkaz pro otevření zásuvky: ESC p 0 7 121 (0x1B 0x70 0x30 0x37 0x79)
-        const drawerCommand = '\x1B\x70\x30\x37\x79';
-
-        // Vytvoříme dočasný soubor s příkazem
-        const timestamp = Date.now();
-        const path = await import('path');
-        const os = await import('os');
-
-        // Použijeme temp složku systému místo relativní cesty
-        const tempDir = path.join(os.tmpdir(), 'print-agent');
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
-
-        const tempFile = path.join(tempDir, `drawer_${timestamp}.txt`);
-        fs.writeFileSync(tempFile, drawerCommand);
-
-        // Pošleme příkaz na tiskárnu
-        const command = `type "${tempFile}" > "\\\\localhost\\${RECEIPT_PRINTER}"`;
-
-        exec(command, { windowsHide: true }, (error, stdout, stderr) => {
-            console.log('📋 Výstup příkazu:', stdout);
-            if (stderr) console.log('Chybove hlasky:', stderr);
-
-            // Smažeme dočasný soubor
-            try {
-                fs.unlinkSync(tempFile);
-            } catch (cleanupError) {
-                console.warn('Nepodarilo se smazat docasny soubor:', cleanupError.message);
-            }
-
-            if (error) {
-                console.error('Chyba pri otevirani zasuvky:', error);
-                res.status(500).json({
-                    status: 'error',
-                    message: `Chyba při otevírání zásuvky: ${error.message}`,
-                    details: {
-                        printer: RECEIPT_PRINTER,
-                        error: error.message,
-                        stdout: stdout,
-                        stderr: stderr
-                    }
-                });
-                return;
-            }
-
-            // Pokud není chyba, považujeme to za úspěch
-            if (!error) {
-                console.log('Pokladni zasuvka uspesne otevrena');
-                res.json({
-                    status: 'ok',
-                    message: 'Pokladní zásuvka otevřena',
-                    details: {
-                        printer: RECEIPT_PRINTER,
-                        output: stdout
-                    }
-                });
-            } else {
-                console.error('Chyba pri otevirani zasuvky:', stdout);
-                res.status(500).json({
-                    status: 'error',
-                    message: 'Nepodařilo se otevřít zásuvku',
-                    details: {
-                        printer: RECEIPT_PRINTER,
-                        output: stdout,
-                        stderr: stderr
-                    }
-                });
-            }
+        console.log('Pokladni zasuvka: prikaz odeslan (WinSpooler, pin 2 + pin 5)');
+        res.json({
+            status: 'ok',
+            message: 'Pokladní zásuvka otevřena',
+            details: { printer: RECEIPT_PRINTER }
         });
     } catch (e) {
-        console.error('Chyba pri otevirani zasuvky:', e.message);
-        res.status(500).json({ status: 'error', message: e.message });
+        const msg = e?.message ?? String(e);
+        console.error('Chyba pri otevirani zasuvky:', msg);
+        res.status(500).json({
+            status: 'error',
+            message: msg || 'Nepodařilo se otevřít zásuvku',
+            details: {
+                printer: RECEIPT_PRINTER,
+                error: msg,
+                hint: 'Zásuvka jde jen přes WinSpoolerHelper.exe – zkontrolujte, že WinSpoolerHelper.exe je v kořenové složce projektu.'
+            }
+        });
     }
 });
 

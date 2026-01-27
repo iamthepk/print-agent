@@ -61,7 +61,7 @@ WinSpoolerHelper.exe --check "EPSON TM-T20III Receipt"
 ## Prerequisites
 
 **For building:**
-- .NET 6.0 SDK or later
+- .NET 10.0 SDK (project uses net10.0; or change csproj to net8.0 and use .NET 8 SDK)
 - Windows 10/11 (x64)
 
 **For running:**
@@ -79,7 +79,7 @@ build.bat
 This will:
 1. Check for .NET SDK
 2. Build self-contained single-file executable
-3. Output to `bin/Release/net6.0/win-x64/publish/WinSpoolerHelper.exe`
+3. Output to `bin/Release/net10.0/win-x64/publish/WinSpoolerHelper.exe`
 
 ### Option 2: Manual Build
 
@@ -91,7 +91,7 @@ dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=
 ### Copy to Print Agent Root
 
 ```bash
-copy bin\Release\net6.0\win-x64\publish\WinSpoolerHelper.exe ..\..\WinSpoolerHelper.exe
+copy bin\Release\net10.0\win-x64\publish\WinSpoolerHelper.exe ..\..\WinSpoolerHelper.exe
 ```
 
 ## Installation
@@ -182,7 +182,7 @@ WinSpoolerHelper.exe "EPSON TM-T20III Receipt" test.bin "Test Job"
 - Run as administrator (if required by printer settings)
 
 ### Build errors
-- Ensure .NET 6.0 SDK or later is installed
+- Ensure .NET 10.0 SDK is installed (or match the TargetFramework in .csproj)
 - Run `dotnet --version` to verify
 - Download from: https://dotnet.microsoft.com/download
 
