@@ -285,6 +285,7 @@ async function generateReceiptPDF(order, options = {}) {
 
     return new Promise((resolve, reject) => {
         const tmpPath = path.join(os.tmpdir(), `receipt-dynamic-${Date.now()}.pdf`);
+        const topMargin = options.pdfTopMargin ?? 10;
         const leftMargin = options.pdfLeftMargin ?? 0;
         const rightMargin = options.pdfRightMargin ?? 0;
         const baseX = leftMargin;
@@ -293,7 +294,7 @@ async function generateReceiptPDF(order, options = {}) {
 
         const doc = new PDFDocument({
             size: [226, 1000],
-            margins: { top: 38, bottom: 38, left: leftMargin, right: rightMargin }
+            margins: { top: topMargin, bottom: 38, left: leftMargin, right: rightMargin }
         });
         try {
             const bebasFontPath = path.join(__dirname, '..', 'fonts', 'BebasNeue-Regular.ttf');

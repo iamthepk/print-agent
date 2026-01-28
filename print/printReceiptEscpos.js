@@ -621,27 +621,27 @@ export async function renderReceiptEscpos(payload, options = {}) {
     buffers.push(enc(`Receipt No.: ${receiptNumber}`));
     buffers.push(CMD.FEED_LINE);
   }
-  
+
   const originalReceiptNumber = getRawValue(payload, 'originalReceiptNumber') || getRawValue(payload, 'original_receipt_number');
   if (originalReceiptNumber && isNotPlaceholder(originalReceiptNumber)) {
     buffers.push(enc(`Refunded Receipt No.: ${originalReceiptNumber}`));
     buffers.push(CMD.FEED_LINE);
   }
-  
+
   // ============================================
   // CUSTOMER NAME
   // ============================================
-  
+
   const customerName = getRawValue(payload, 'customerName') || getRawValue(payload, 'customer_name');
   if (customerName && isNotPlaceholder(customerName) && customerName !== 'Walk-in Customer') {
     buffers.push(enc(`Customer: ${customerName}`));
     buffers.push(CMD.FEED_LINE);
   }
-  
+
   // ============================================
   // DATE
   // ============================================
-  
+
   const createdAt = getRawValue(payload, 'createdAt') || getRawValue(payload, 'created_at');
   if (createdAt && isNotPlaceholder(createdAt)) {
     const formattedDate = formatDate(createdAt);

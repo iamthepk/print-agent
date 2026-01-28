@@ -102,6 +102,12 @@ export const WINSPOOLER_HELPER_PATH = process.env.WINSPOOLER_HELPER_PATH || './W
 // ============================================
 
 /**
+ * RECEIPT_PDF_TOP_MARGIN: PDF top margin in points (1 pt ≈ 0.35 mm).
+ * Default 10 = small gap. Set 0 for no gap; was 38 (≈13 mm) before, often caused ~2 cm empty space with driver.
+ */
+export const RECEIPT_PDF_TOP_MARGIN = parseInt(process.env.RECEIPT_PDF_TOP_MARGIN ?? '10', 10);
+
+/**
  * RECEIPT_PDF_LEFT_MARGIN, RECEIPT_PDF_RIGHT_MARGIN: PDF layout (points)
  * Default 0/0 = full width (226pt for 80mm), content spread across entire receipt.
  * Increase only if your printer/driver crops edges.
@@ -140,7 +146,8 @@ export const printConfig = {
   RAW_SEND_FALLBACK,
   WINSPOOLER_HELPER_PATH,
   
-  // PDF receipt margins (fix horizontal shift)
+  // PDF receipt margins (fix horizontal shift / top empty space)
+  RECEIPT_PDF_TOP_MARGIN,
   RECEIPT_PDF_LEFT_MARGIN,
   RECEIPT_PDF_RIGHT_MARGIN,
 

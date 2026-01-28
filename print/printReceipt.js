@@ -95,8 +95,9 @@ async function printReceiptPDF(order) {
     console.log(`📄 Printer: ${printConfig.RECEIPT_PRINTER}`);
     console.log(`📄 ============================================`);
 
-    // Generate PDF (with configurable margins to fix horizontal shift after WMIC→PowerShell/driver changes)
+    // Generate PDF (with configurable margins to fix horizontal shift and top empty space)
     const pdfPath = await generateReceiptPDF(order, {
+      pdfTopMargin: printConfig.RECEIPT_PDF_TOP_MARGIN,
       pdfLeftMargin: printConfig.RECEIPT_PDF_LEFT_MARGIN,
       pdfRightMargin: printConfig.RECEIPT_PDF_RIGHT_MARGIN
     });
