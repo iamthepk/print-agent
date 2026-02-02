@@ -10,21 +10,29 @@ echo Spoustim Print Agent Server...
 REM Spustime server
 start /B "" "C:\Program Files\nodejs\node.exe" server.js
 
-REM Pockame, az se server spusti
-timeout /t 3 /nobreak > nul
-
-REM Zkontrolujeme, zda server bezi
+REM Cekame, az server nabinduje port 8000 (max 25 sekund, kontrola kazdou sekundu)
+setlocal enabledelayedexpansion
+set tries=0
+:waitloop
+timeout /t 1 /nobreak > nul
 netstat -an | findstr ":8000" > nul
-if %errorlevel% equ 0 (
-    echo Server bezi uspesne!
-    echo.
-    echo Spoustim ngrok...
-    powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0start-ngrok.ps1"
-) else (
-    echo Server se nespustil
-    if not "%1"=="SILENT" pause
-    exit /b 1
-)
+if %errorlevel% equ 0 goto serverok
+set /a tries+=1
+if !tries! geq 25 goto serverfailed
+goto waitloop
+
+:serverfailed
+endlocal
+echo Server se nespustil ani po 25 sekundach
+if not "%1"=="SILENT" pause
+exit /b 1
+
+:serverok
+endlocal
+echo Server bezi uspesne!
+echo.
+echo Spoustim ngrok...
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0start-ngrok.ps1"
 
 REM Pro Windows sluzbu musi skript bezet - pouzijeme nekonecnu smycku
 REM Pokud je spusten manualne, uzivatel muze stisknout Ctrl+C pro ukonceni
