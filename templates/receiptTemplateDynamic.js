@@ -285,7 +285,7 @@ async function generateReceiptPDF(order, options = {}) {
 
     return new Promise((resolve, reject) => {
         const tmpPath = path.join(os.tmpdir(), `receipt-dynamic-${Date.now()}.pdf`);
-        const topMargin = options.pdfTopMargin ?? 10;
+        const topMargin = options.pdfTopMargin ?? 0;
         const leftMargin = options.pdfLeftMargin ?? 0;
         const rightMargin = options.pdfRightMargin ?? 0;
         const baseX = leftMargin;
@@ -305,8 +305,26 @@ async function generateReceiptPDF(order, options = {}) {
             console.log('Bebas Neue font not found, using default fonts');
         }
 
-        doc.pipe(fs.createWriteStream(tmpPath));
+        const stream = fs.createWriteStream(tmpPath);
+        doc.pipe(stream);
 
+        // Spacing v bodech (pt): moveDown() závisí na fontSize/lineHeight a po velkých fontech
+        // dělá obrovské mezery; gap/hr zajišťují deterministické vertikální mezery.
+        const gap = (pt) => { doc.y += pt; };
+        const hr = (above = 2, below = 2) => {
+             gap(above);
+            doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
+             gap(below);
+         };
+
+         const dashedSeparator = (y) => {
+            doc
+                .dash(1, { space: 2 })      // tečka / mezera
+                .moveTo(baseX, y)
+                .lineTo(baseX + contentWidth, y)
+                .stroke()
+                .undash();
+        };
 
         const centerText = (text, fontSize = 10, font = "Bebas Neue") => {
             doc.fontSize(fontSize).font(font).text(text, baseX, doc.y, { width: contentWidth, align: "center" });
@@ -372,7 +390,7 @@ async function generateReceiptPDF(order, options = {}) {
                 doc.y = logoStartY + logoHeight + 8;
                 hasLogoImage = true;
                 console.log('✅ Logo z company_logo vykresleno');
-                doc.moveDown(0.2);
+                gap(2);
             } catch (error) {
                 console.error('❌ Chyba při vykreslování loga z bufferu:', error.message);
                 hasLogoImage = false;
@@ -383,12 +401,12 @@ async function generateReceiptPDF(order, options = {}) {
         const companyName = getValue(order, 'company_name');
         if (!hasLogoImage) {
             centerText(companyName, 25, "Bebas Neue");
-            doc.moveDown(0.2);
+            gap(2);
         }
 
         if (hasLogoImage) {
             centerText(companyName, 18, "Bebas Neue");
-            doc.moveDown(0.3);
+            gap(4);
         }
 
         // === COMPANY DETAILS ===
@@ -422,7 +440,7 @@ async function generateReceiptPDF(order, options = {}) {
             centerText(companyWebsite, 11);
         }
 
-        doc.moveDown(0.8);
+        gap(4);
 
         const isRefund = order.isRefund || order.totalCZK < 0;
 
@@ -430,81 +448,131 @@ async function generateReceiptPDF(order, options = {}) {
 
         if (isRefund) {
             centerText("REFUND RECEIPT", 20, "Bebas Neue");
-            doc.moveDown(0.3);
+            gap(2);
         }
 
-        const receiptNumber = getRawValue(order, 'receiptNumber') || getRawValue(order, 'receipt_number') || orderNumber;
-        console.log('🔍 Receipt Number:', { receiptNumber, isNotPlaceholder: receiptNumber ? isNotPlaceholder(receiptNumber) : false, rawReceiptNumber: order.receiptNumber, rawReceipt_number: order.receipt_number });
-        if (receiptNumber && isNotPlaceholder(receiptNumber)) {
-            doc.fontSize(12).font("Bebas Neue");
-            const rn = `Receipt No.: ${receiptNumber}`;
-            doc.text(rn, baseX, doc.y, { width: contentWidth, align: "left" });
-            doc.y += doc.heightOfString(rn, { width: contentWidth });
-        }
+        const receiptNumber =
+        getRawValue(order, "receiptNumber") ||
+        getRawValue(order, "receipt_number") ||
+        orderNumber;
+      
+      console.log("🔍 Receipt Number:", {
+        receiptNumber,
+        isNotPlaceholder: receiptNumber ? isNotPlaceholder(receiptNumber) : false,
+        rawReceiptNumber: order.receiptNumber,
+        rawReceipt_number: order.receipt_number,
+      });
+      
+      const originalReceiptNumber =
+        getRawValue(order, "originalReceiptNumber") ||
+        getRawValue(order, "original_receipt_number");
+      
+      const customerName =
+        getRawValue(order, "customerName") || getRawValue(order, "customer_name");
+      
+      console.log("🔍 Customer Name:", {
+        customerName,
+        isNotPlaceholder: customerName ? isNotPlaceholder(customerName) : false,
+        rawCustomerName: order.customerName,
+        rawCustomer_name: order.customer_name,
+      });
+      
+      const createdAt =
+        getRawValue(order, "createdAt") || getRawValue(order, "created_at");
+      
+      console.log("🔍 Created At:", {
+        createdAt,
+        isNotPlaceholder: createdAt ? isNotPlaceholder(createdAt) : false,
+        rawCreatedAt: order.createdAt,
+        rawCreated_at: order.created_at,
+      });
+      
+      // === RECEIPT / CUSTOMER / DATE – TIGHT (bez heightOfString) ===
+      doc.font("Bebas Neue").fontSize(12);
+      
+      // dočasně stáhni line-gap jen pro tenhle blok (dělá to hodně)
+      const prevLineGap = doc._lineGap ?? 0;
+      doc.lineGap(-3);
+      
+      const row = (text) => {
+        const y = doc.y;
+        doc.text(text, baseX, y, { width: contentWidth, align: "left" });
+        // posun jen o jednu řádku (stabilní), ne o heightOfString
+        doc.y = y + doc.currentLineHeight(true);
+      };
+      
+      if (receiptNumber && isNotPlaceholder(receiptNumber)) {
+        row(`Receipt No.: ${receiptNumber}`);
+      }
+      
+      if (originalReceiptNumber && isNotPlaceholder(originalReceiptNumber)) {
+        row(`Refunded Receipt No.: ${originalReceiptNumber}`);
+      }
+      
+      if (
+        customerName &&
+        isNotPlaceholder(customerName) &&
+        customerName !== "Walk-in Customer"
+      ) {
+        row(`Customer: ${customerName}`);
+      }
+      
+      if (createdAt && isNotPlaceholder(createdAt)) {
+        row(`Date: ${formatDate(createdAt)}`);
+      }
+      
+      // vrať line-gap zpět
+      doc.lineGap(prevLineGap);
+      
 
-        const originalReceiptNumber = getRawValue(order, 'originalReceiptNumber') || getRawValue(order, 'original_receipt_number');
-        if (originalReceiptNumber && isNotPlaceholder(originalReceiptNumber)) {
-            const orn = `Refunded Receipt No.: ${originalReceiptNumber}`;
-            doc.text(orn, baseX, doc.y, { width: contentWidth, align: "left" });
-            doc.y += doc.heightOfString(orn, { width: contentWidth });
-        }
-
-        const customerName = getRawValue(order, 'customerName') || getRawValue(order, 'customer_name');
-        console.log('🔍 Customer Name:', { customerName, isNotPlaceholder: customerName ? isNotPlaceholder(customerName) : false, rawCustomerName: order.customerName, rawCustomer_name: order.customer_name });
-        if (customerName && isNotPlaceholder(customerName) && customerName !== "Walk-in Customer") {
-            const cn = `Customer: ${customerName}`;
-            doc.text(cn, baseX, doc.y, { width: contentWidth, align: "left" });
-            doc.y += doc.heightOfString(cn, { width: contentWidth });
-        }
-
-        const createdAt = getRawValue(order, 'createdAt') || getRawValue(order, 'created_at');
-        console.log('🔍 Created At:', { createdAt, isNotPlaceholder: createdAt ? isNotPlaceholder(createdAt) : false, rawCreatedAt: order.createdAt, rawCreated_at: order.created_at });
-        if (createdAt && isNotPlaceholder(createdAt)) {
-            const formattedDate = formatDate(createdAt);
-            const dt = `Date: ${formattedDate}`;
-            doc.text(dt, baseX, doc.y, { width: contentWidth, align: "left" });
-            doc.y += doc.heightOfString(dt, { width: contentWidth });
-        }
-
-        doc.moveDown(0.3);
-        doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
-        doc.moveDown(0.3);
-        doc.moveDown(0.5);
+        hr(0, 2);
         let itemCount = 0;
         const items = order.items || [];
-
-        items.forEach((item) => {
+        
+        items.forEach((item, index) => {
             itemCount += item.qty || 1;
-
+        
             const itemName = item.name || '';
             const unitPrice = item.unitPrice || item.price || 0;
             const itemTotal = (item.qty || 1) * unitPrice;
             const displayUnitPrice = isRefund ? -Math.abs(unitPrice) : unitPrice;
             const displayItemTotal = isRefund ? -Math.abs(itemTotal) : itemTotal;
-
+        
             doc.fontSize(11).font("Bebas Neue");
+        
+            // 1) Název drinku
             const itemStartY = doc.y;
             doc.text(itemName, baseX, itemStartY, { width: contentWidth, align: "left" });
             doc.y = itemStartY + doc.heightOfString(itemName, { width: contentWidth });
-
+        
+            // poslední řádek itemu (pro cenu)
+            let lastLineY = doc.y - doc.currentLineHeight(true);
+        
+            // 2) qty × unit price
             if ((item.qty || 1) > 1) {
                 leftRightText(`${item.qty} × ${displayUnitPrice.toFixed(2)} CZK`, "");
+                lastLineY = doc.y - doc.currentLineHeight(true);
             }
-
+        
+            // 3) cena na poslední řádek
             const priceStr = `${displayItemTotal.toFixed(2)} CZK`;
-            doc.text(priceStr, baseX, doc.y, { width: contentWidth, align: "right" });
-            doc.y = doc.y + doc.heightOfString(priceStr, { width: contentWidth });
-            doc.moveDown(0.2);
-        });
+            doc.text(priceStr, baseX, lastLineY, { width: contentWidth, align: "right" });
+        
+            // 4) posun pod item
+            doc.y = lastLineY + doc.currentLineHeight(true);
+        
+// 5) jemná oddělovací čára mezi itemy (ne po posledním)
+if (index < items.length - 1) {
+    dashedSeparator(doc.y + 1); // lehce pod textem
+    doc.y += 2;                // minimální posun
+}
 
-        doc.moveDown(0.3);
-        doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
-        doc.moveDown(0.3);
+        });
+        
+        hr(0, 2);
         leftRightText(`Items Count: ${itemCount}`, "");
 
-        doc.moveDown(0.3);
-        doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
-        doc.moveDown(0.3);
+        hr();
         const subtotal = order.subtotal;
         if (subtotal && subtotal !== order.totalCZK) {
             const displaySubtotal = isRefund ? -Math.abs(subtotal) : subtotal;
@@ -519,7 +587,7 @@ async function generateReceiptPDF(order, options = {}) {
         }
         if (order.discountAmount && order.discountAmount > 0) {
             let discountLabel = "Discount";
-
+        
             if (order.discountPercent) {
                 const percent = Number(order.discountPercent);
                 if (percent > 0) {
@@ -533,36 +601,56 @@ async function generateReceiptPDF(order, options = {}) {
             } else if (order.discountType === "fixed") {
                 discountLabel = `Discount ${Math.round(order.discountAmount)} CZK`;
             }
-
+        
             leftRightText(discountLabel + ":", `-${order.discountAmount.toFixed(2)} CZK`);
-
-            doc.fontSize(11).font("Bebas Neue");
-            doc.fillColor('#666666');
+        
+            // "You saved" – přesně 1 řádek, žádný heightOfString (ten dělal velké mezery)
+            doc.font("Bebas Neue").fontSize(11).fillColor("#666666");
+        
             const savedStr = `You saved ${order.discountAmount.toFixed(2)} CZK!`;
-            doc.text(savedStr, baseX, doc.y, { width: contentWidth, align: "center" });
-            doc.y += doc.heightOfString(savedStr, { width: contentWidth });
-            doc.fillColor('#000000');
-            doc.fontSize(13);
+            const y = doc.y;
+        
+            doc.text(savedStr, baseX, y, { width: contentWidth, align: "center" });
+        
+            // posun o jednu řádku (stabilní), ne podle heightOfString
+            doc.y = y + doc.currentLineHeight(true);
+        
+            // reset styling pro další část (TOTAL atd.)
+            doc.fillColor("#000000").fontSize(13);
         }
 
-        doc.moveDown(0.3);
+// === TOTAL (utažená sekce) ===
+const totalCZK = order.totalCZK || 0;
+const displayTotal = isRefund ? -Math.abs(totalCZK) : totalCZK;
 
-        const totalCZK = order.totalCZK || 0;
-        const displayTotal = isRefund ? -Math.abs(totalCZK) : totalCZK;
-        leftRightTextWithCurrency("TOTAL:", displayTotal.toFixed(2), "CZK", 15, "Bebas Neue");
+leftRightTextWithCurrency(
+    "TOTAL:",
+    displayTotal.toFixed(2),
+    "CZK",
+    15,
+    "Bebas Neue"
+);
 
-        if (order.totalEUR) {
-            doc.fontSize(12).font("Bebas Neue");
-            const displayTotalEUR = isRefund ? -Math.abs(order.totalEUR) : order.totalEUR;
-            const eurStr = `= ${displayTotalEUR.toFixed(2)} EUR`;
-            doc.text(eurStr, baseX, doc.y, { width: contentWidth, align: "right" });
-            doc.y += doc.heightOfString(eurStr, { width: contentWidth });
-        }
+// EUR hned pod TOTAL – 1 řádek, žádné heightOfString
+if (order.totalEUR) {
+    const displayTotalEUR = isRefund ? -Math.abs(order.totalEUR) : order.totalEUR;
 
-        doc.moveDown(0.3);
-        doc.moveTo(baseX, doc.y).lineTo(baseX + contentWidth, doc.y).stroke();
-        doc.moveDown(0.3);
-        doc.moveDown(0.5);
+    doc.font("Bebas Neue").fontSize(12);
+    const y = doc.y;
+
+    doc.text(
+        `= ${displayTotalEUR.toFixed(2)} EUR`,
+        baseX,
+        y,
+        { width: contentWidth, align: "right" }
+    );
+
+    // přesně jeden řádek dolů
+    doc.y = y + doc.currentLineHeight(true);
+}
+
+// ❗ čára bez mezery NAD (to dělalo díru)
+hr(0, 2);
 
         doc.fontSize(15).font("Bebas Neue");
 
@@ -604,14 +692,12 @@ async function generateReceiptPDF(order, options = {}) {
             }
         }
 
-        doc.moveDown(1);
-
         if (order.exchangeRate) {
             centerText(`Exchange rate: ${order.exchangeRate}`, 12);
-            doc.moveDown(0.3);
+            gap(2);
         }
 
-        doc.moveDown(1);
+        gap(2);
 
         if (qrCodeBuffer) {
             const qrTextAbove = getRawValue(order, 'qr_text_above') || getRawValue(order, 'qrTextAbove');
@@ -619,7 +705,7 @@ async function generateReceiptPDF(order, options = {}) {
             if (qrTextAbove && isNotPlaceholder(qrTextAbove)) {
                 doc.fontSize(11).font("Bebas Neue");
                 centerText(qrTextAbove, 18);
-                doc.moveDown(0.3);
+                gap(2);
             }
 
             try {
@@ -631,13 +717,13 @@ async function generateReceiptPDF(order, options = {}) {
                     height: qrWidthPoints
                 });
 
-                doc.y = doc.y + qrWidthPoints + 8;
+                doc.y = doc.y + qrWidthPoints + 2;
                 console.log('✅ QR kód z company_google_reviews_qr_code vykreslen');
 
                 const qrTextBelow = getRawValue(order, 'qr_text_below') || getRawValue(order, 'qrTextBelow');
 
                 if (qrTextBelow && isNotPlaceholder(qrTextBelow)) {
-                    doc.moveDown(0.3);
+                    gap(2);
                     doc.fontSize(11).font("Bebas Neue");
                     centerText(qrTextBelow, 18);
                 }
@@ -655,7 +741,7 @@ async function generateReceiptPDF(order, options = {}) {
         if (footerCustomText && isNotPlaceholder(footerCustomText)) {
             doc.fontSize(18).font("Bebas Neue");
             centerText(footerCustomText, 18);
-            doc.moveDown(0.1);
+            gap(2);
         }
 
         if (footerSocialText && isNotPlaceholder(footerSocialText)) {
@@ -668,16 +754,13 @@ async function generateReceiptPDF(order, options = {}) {
             centerText(footerSocialHandle, 11);
         }
 
-        doc.moveDown(1);
-        doc.on('end', () => {
+        gap(2);
+        stream.on('finish', () => {
             console.log('✅ Dynamický template PDF dokončen:', tmpPath);
             resolve(tmpPath);
         });
-
-        doc.on('error', (error) => {
-            console.error('❌ Chyba při generování dynamického template PDF:', error);
-            reject(error);
-        });
+        stream.on('error', reject);
+        doc.on('error', reject);
 
         doc.end();
     });
