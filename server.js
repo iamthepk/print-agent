@@ -629,6 +629,24 @@ app.post('/print-receipt', async (req, res) => {
             console.log(`📋 Using default method from config: ${printConfig.RECEIPT_METHOD}`);
         }
 
+        // Debug log pro cash rounding & klíčová pole před renderem
+        const debugTotalCZK = receiptData.totalCZK ?? receiptData.total_czk;
+        const debugTotalEUR = receiptData.totalEUR ?? receiptData.total_eur;
+        const debugPaymentMethod = receiptData.paymentMethod ?? receiptData.payment_method;
+        const debugRounding =
+            receiptData.rounding ??
+            receiptData.cashRounding ??
+            receiptData.roundingCZK;
+        const debugUseDynamicTemplate = receiptData.useDynamicTemplate;
+
+        console.log('📋 Receipt debug:', {
+            totalCZK: debugTotalCZK,
+            rounding: debugRounding,
+            totalEUR: debugTotalEUR,
+            paymentMethod: debugPaymentMethod,
+            useDynamicTemplate: debugUseDynamicTemplate
+        });
+
         console.log('📋 Calling printReceipt with options:', options);
         const result = await printReceipt(receiptData, options)
         console.log('✅ Print successful:', result.method || 'default');

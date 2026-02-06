@@ -245,6 +245,15 @@ function formatDate(dateString) {
     return dateString;
 }
 
+/**
+ * Whether amount is effectively whole CZK (within tolerance 0.005).
+ * Used to decide TOTAL formatting: whole CZK → "49 CZK", else "49.30 CZK".
+ */
+function isWholeCZK(amount, tolerance = 0.005) {
+    if (amount == null || typeof amount !== 'number') return false;
+    return Math.abs(Math.round(amount) - amount) < tolerance;
+}
+
 async function generateReceiptPDF(order, options = {}) {
     console.log('🎯 DYNAMICKÝ TEMPLATE - Začínám generovat PDF');
     console.log('🎯 Order keys:', Object.keys(order).filter(k => k.startsWith('company_')));
@@ -619,19 +628,29 @@ if (index < items.length - 1) {
             doc.fillColor("#000000").fontSize(13);
         }
 
-// === TOTAL (utažená sekce) ===
+// === ROUNDING (if any) then TOTAL = payable ===
 const totalCZK = order.totalCZK || 0;
 const displayTotal = isRefund ? -Math.abs(totalCZK) : totalCZK;
+const rawRounding = order.rounding ?? order.cashRounding ?? order.roundingCZK;
+const hasRounding = typeof rawRounding === "number" && rawRounding !== 0;
+const roundingDisplay = hasRounding ? (isRefund ? -Math.abs(rawRounding) : rawRounding) : 0;
+const payable = displayTotal + roundingDisplay;
 
+if (hasRounding) {
+    leftRightText("ROUNDING:", `${roundingDisplay.toFixed(2)} CZK`);
+}
+
+hr(0, 2);
+
+const totalFormatted = isWholeCZK(payable) ? String(Math.round(payable)) : payable.toFixed(2);
 leftRightTextWithCurrency(
     "TOTAL:",
-    displayTotal.toFixed(2),
+    totalFormatted,
     "CZK",
     15,
     "Bebas Neue"
 );
 
-// EUR hned pod TOTAL – 1 řádek, žádné heightOfString
 if (order.totalEUR) {
     const displayTotalEUR = isRefund ? -Math.abs(order.totalEUR) : order.totalEUR;
 
@@ -645,11 +664,9 @@ if (order.totalEUR) {
         { width: contentWidth, align: "right" }
     );
 
-    // přesně jeden řádek dolů
     doc.y = y + doc.currentLineHeight(true);
 }
 
-// ❗ čára bez mezery NAD (to dělalo díru)
 hr(0, 2);
 
         doc.fontSize(15).font("Bebas Neue");

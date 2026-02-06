@@ -482,6 +482,15 @@ function formatDate(dateString) {
   }
 }
 
+/**
+ * Whether amount is effectively whole CZK (tolerance 0.005).
+ * Used for TOTAL: whole CZK → "49 CZK", else "49.30 CZK".
+ */
+function isWholeCZK(amount, tolerance = 0.005) {
+  if (amount == null || typeof amount !== 'number') return false;
+  return Math.abs(Math.round(amount) - amount) < tolerance;
+}
+
 // ============================================
 // MAIN RENDERER
 // ============================================
@@ -764,19 +773,33 @@ export async function renderReceiptEscpos(payload, options = {}) {
   buffers.push(CMD.FEED_LINE);
   
   // ============================================
-  // TOTAL
+  // ROUNDING (if any) then TOTAL = payable
   // ============================================
   
   const totalCZK = payload.totalCZK || payload.total_czk || 0;
   const displayTotal = isRefund ? -Math.abs(totalCZK) : totalCZK;
-  
+  const rawRounding = payload.rounding ?? payload.cashRounding ?? payload.roundingCZK;
+  const hasRounding = typeof rawRounding === 'number' && rawRounding !== 0;
+  const roundingDisplay = hasRounding ? (isRefund ? -Math.abs(rawRounding) : rawRounding) : 0;
+  const payable = displayTotal + roundingDisplay;
+
+  if (hasRounding) {
+    buffers.push(enc(padLine('ROUNDING:', `${roundingDisplay.toFixed(2)} CZK`, charsPerLine)));
+    buffers.push(CMD.FEED_LINE);
+  }
+
+  buffers.push(CMD.FEED_LINE);
+  buffers.push(enc(createSeparator(charsPerLine)));
+  buffers.push(CMD.FEED_LINE);
+
+  const totalFormatted = isWholeCZK(payable) ? `${Math.round(payable)} CZK` : `${payable.toFixed(2)} CZK`;
   buffers.push(CMD.BOLD_ON);
   buffers.push(CMD.DOUBLE_HEIGHT_ON);
-  buffers.push(enc(padLine('TOTAL:', `${displayTotal.toFixed(2)} CZK`, charsPerLine)));
+  buffers.push(enc(padLine('TOTAL:', totalFormatted, charsPerLine)));
   buffers.push(CMD.FEED_LINE);
   buffers.push(CMD.DOUBLE_HEIGHT_OFF);
   buffers.push(CMD.BOLD_OFF);
-  
+
   // EUR total (if present)
   const totalEUR = payload.totalEUR || payload.total_eur;
   if (totalEUR) {
