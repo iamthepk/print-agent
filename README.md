@@ -2,6 +2,7 @@
 
 Lokální tiskový agent pro POS systém s podporou účtenek a štítků.
 
+
 ## ✨ Hlavní funkce
 
 - 🧾 **Tisk účtenek** na termální tiskárně (Epson TM-T20III)
