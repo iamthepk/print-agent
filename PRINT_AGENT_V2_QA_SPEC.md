@@ -87,13 +87,13 @@ Doporucene umisteni:
 
 ```text
 Install:
-  C:\Program Files\Lootea Print Agent
+  C:\Program Files\Print Agent
 
 Config:
-  %APPDATA%\Lootea\PrintAgent\config.json
+  %APPDATA%\PrintAgent\config.json
 
 Logs:
-  %LOCALAPPDATA%\Lootea\PrintAgent\logs\
+  %LOCALAPPDATA%\PrintAgent\logs\
 ```
 
 ## Tiskove Role
@@ -102,12 +102,12 @@ V prvni verzi budou podporovane maximalne tyto role:
 
 - `receipt` - jedna uctenkova tiskarna,
 - `kitchen` - jedna kuchyn/bar/pripravna tiskarna,
-- `cash_drawer` - navazana na receipt tiskarnu.
+- `cash_drawer` - tiskarna, pres kterou se posila impulz pokladni zasuvce.
 
 Pravidla:
 
-- `cash_drawer` pouziva stejnou fyzickou tiskarnu jako `receipt`.
-- V UI se muze zobrazovat jako samostatna role, ale je locked na receipt printer.
+- `cash_drawer` ma vlastni vyber tiskarny v Agent UI.
+- `cash_drawer` muze pouzivat stejnou fyzickou tiskarnu jako `receipt`, ale neni na ni locked.
 - Kazda role muze byt disabled/None.
 - Pokud POS chce `receipt + kitchen`, ale agent nema nakonfigurovanou kitchen roli, POS konfiguraci nepovoli ulozit, pokud je agent dostupny a stav lze overit.
 - Pokud je agent offline, POS muze nastaveni ulozit s warningem a overi ho po reconnectu.
@@ -170,6 +170,28 @@ Print Agent UI ma ukazovat zivy stav tiskaren:
 
 - refresh kazdych 10 sekund,
 - refresh pri otevreni POS/Agent UI.
+
+## Testovaci Rezim
+
+Pro vyvoj a QA bez native helperu muze Agent podporovat explicitni testovaci backend:
+
+- `printerAdapterMode: "windows"` - realny Windows backend,
+- `printerAdapterMode: "simulated"` - simulovany backend bez fyzickeho tisku.
+
+Pravidla:
+
+- default pro produkci je `windows`,
+- `simulated` se zapina rucne v Agent UI,
+- testovaci backend vraci uspesny receipt/kitchen/drawer vysledek bez odeslani na tiskarnu,
+- simulated mod slouzi pro overeni UI, API contractu, token auth, drawer flow a dedupe,
+- skutecny tisk se overuje az s `WinSpoolerHelper.exe`.
+
+Do doplneni `WinSpoolerHelper.exe` muze `windows` backend podporovat basic text fallback:
+
+- receipt/kitchen test se posle pres Windows `Out-Printer` jako plain text,
+- fallback overuje, ze agent vidi a dokaze oslovit Windows tiskarnu,
+- fallback neni finalni thermal/sticker layout,
+- cash drawer fallback se nedela, protoze otevreni zasuvky vyzaduje raw printer command.
 
 ## Kitchen Tisk
 
@@ -323,7 +345,7 @@ Prvni verze nepodporuje vyber template v UI.
 
 Pouzije se:
 
-- `receipt.default` - soucasna receipt sablona, postupne ocistena od Lootea-specific hardcodu,
+- `receipt.default` - soucasna receipt sablona, postupne ocistena od brand-specific hardcodu,
 - `kitchen.default` - dnesni napojovy sticker layout, ale v contractu a UI pojmenovany jako kitchen.
 
 Pozdeji:
@@ -333,7 +355,7 @@ Pozdeji:
 - vice kitchen/ticket template,
 - obecnejsi template pro jidla.
 
-Lootea-specific veci se maji postupne presouvat z template do payloadu nebo konfigurace:
+Brand-specific veci se maji postupne presouvat z template do payloadu nebo konfigurace:
 
 - logo,
 - company name,
