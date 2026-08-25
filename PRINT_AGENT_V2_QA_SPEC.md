@@ -2,7 +2,7 @@
 
 Datum: 2026-08-25
 
-Tento dokument zachycuje produktove a technicke rozhodnuti z QA pro novou verzi Print Agenta. Slouzi jako specifikace pro implementaci na feature vetvi.
+Tento dokument zachycuje produktove a technicke rozhodnuti z QA pro novou verzi Print Agenta. Slouzi jako specifikace pro implementaci v samostatnem repozitari `print-agent-v2`.
 
 ## Cil
 
@@ -16,7 +16,7 @@ POS a Print Agent budou dlouhodobe jeden produktovy ekosystem, ale instalace zus
 
 ## Zakladni Rozhodnuti
 
-- Print Agent v2 bude vyvijen na samostatne vetvi, aby se neporusila soucasna funkcni verze.
+- Print Agent v2 bude vyvijen v samostatnem private repozitari, aby se neporusila soucasna funkcni verze.
 - Prvni verze je pouze pro Windows.
 - Print Agent bude samostatna aplikace s instalatorem.
 - Print Agent bude mit vlastni lokalni admin UI panel.
@@ -25,6 +25,30 @@ POS a Print Agent budou dlouhodobe jeden produktovy ekosystem, ale instalace zus
 - Tiskarny se nastavuji v Print Agent UI, ne v POS.
 - POS muze jen zapnout/vypnout, co chce tisknout, a cist stav agenta.
 
+## Profesionalni Produktovy Smer
+
+Print Agent v2 ma pusobit jako normalni produktova desktop aplikace, ne jako sada volne polozenych skriptu.
+
+Doporuceny stack pro prvni verzi:
+
+- Electron desktop shell,
+- TypeScript v celem projektu,
+- React/Vite admin UI uvnitr Electron rendereru,
+- Node HTTP API ve vnitrni aplikacni vrstve,
+- Windows printer adapter izolovany za rozhranim,
+- electron-builder NSIS installer pro `.exe` instalaci.
+
+Produktove zasady:
+
+- uzivatel nespousti `.bat`, `.vbs`, `.ps1` ani terminal,
+- produkcni aplikace bezi bez viditelne konzole,
+- tray ikona je hlavni vstup do UI a rychly status,
+- build/dev skripty mohou existovat, ale nejsou soucast uzivatelskeho flow,
+- konfigurace, logy a runtime data jsou mimo repo/source checkout,
+- app ma jasny nazev, verzi, diagnostiku, log export a citelne chybove stavy,
+- Windows-specific tisk je v samostatnem adapteru, aby pozdeji slo pridat macOS/CUPS nebo jiny backend,
+- installer a tray UI maji byt prvni trida produktu, ne dodatecna vrstva.
+
 ## Cilovy Runtime Model
 
 Soucasny stav neni skutecna Windows Service. Dnes se agent spousti pres zkratku ve Windows Startup, ktera vola VBS a `start.bat`.
@@ -32,7 +56,7 @@ Soucasny stav neni skutecna Windows Service. Dnes se agent spousti pres zkratku 
 Pro v2:
 
 - Agent bezi silent na pozadi.
-- Agent se spousti po prihlaseni uzivatele do Windows.
+- Agent se spousti po prihlaseni uzivatele do Windows pres desktop runtime autostart.
 - Agent ma ikonu v tray liste.
 - Agent se pri padu automaticky restartuje.
 - Windows Service se zatim nedela jako default, protoze tiskarny, tray UI a driver/user-session integrace mohou byt spolehlivejsi v prihlasene user session.
@@ -367,8 +391,9 @@ Slouceni nema znamenat spolecnou instalaci. POS a Print Agent zustanou oddelene 
 8. Zachovat legacy endpointy docasne, pokud to pomuze postupnemu prepojeni POS.
 9. Upravit POS `printAgent.ts` na novy contract a terminologii `kitchen`.
 10. Upravit POS Printing Settings.
-11. Pripravit standalone build a installer.
-12. Az potom resit monorepo merge.
+11. Pripravit Electron shell, tray integraci a lokalni admin UI.
+12. Pripravit standalone build a NSIS installer.
+13. Az potom resit monorepo merge.
 
 ## Aktualni Zachovane Chovani
 
