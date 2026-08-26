@@ -27,6 +27,7 @@ Implemented in this first pass:
 - Isolated adapter slot for `WinSpoolerHelper.exe`.
 - Simulated printer backend for UI/API testing without native printer output.
 - NSIS installer configuration through `electron-builder`.
+- Installer prerequisite bootstrap for SumatraPDF and IrfanView.
 
 The repository does not yet include the native `WinSpoolerHelper.exe` binary.
 In `Windows` backend mode, receipt jobs and ESC/POS-like printers fall back to
@@ -34,6 +35,13 @@ direct Windows RAW spooler output when the helper is missing. Other kitchen
 printers fall back to Windows driver/GDI text rendering. Cash drawer tests fall
 back to an ESC/POS drawer pulse. Use `Simulated` backend mode for local UI/API
 tests without physical printer output.
+
+The Windows NSIS installer runs a packaged prerequisite bootstrap after the app
+files are installed. It checks for SumatraPDF and IrfanView, uses approved
+offline installers from `build/installer/packages` when present, and otherwise
+uses `winget` package IDs `SumatraPDF.SumatraPDF` and
+`IrfanSkiljan.IrfanView` to install or update them. Bootstrap logs are written
+to `%LOCALAPPDATA%\PrintAgent\logs\installer-prerequisites.log`.
 
 ## Runtime paths
 
