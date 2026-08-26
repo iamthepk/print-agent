@@ -119,7 +119,8 @@ export class PrintJobService {
         paperName: roleConfig.paperName ?? null,
         templateId: task.templateId ?? `${role}.default`,
         copies: Math.max(1, Math.min(10, task.copies ?? 1)),
-        payload: task.payload
+        payload: task.payload,
+        receiptPrintMode: role === "receipt" ? roleConfig.receiptPrintMode ?? "pdf" : undefined
       });
 
       results.push({
@@ -162,29 +163,16 @@ export class PrintJobService {
 
     if (role === "kitchen") {
       return {
-        kind: "kitchen_label",
-        orderId: "TEST",
-        itemId: "1",
-        productName: "Lootea's Brown Sugar 700ml",
-        modifiers: [
-          "Mixed with vanilla",
-          "less sweet",
-          "less ice",
-          "Tapioca"
-        ],
-        note: "Smile, You are beautiful!",
-        createdAt,
-        label: {
-          pcs: "1",
-          name: "Lootea's Brown Sugar 700ml",
-          order: "TEST",
-          round: "1",
-          flavor: "Mixed with vanilla",
-          sweetness: "less sweet",
-          ice: "less ice",
-          toppings: ["Tapioca"],
-          extraShots: []
-        }
+        pcs: "1",
+        name: "Sample milk tea 700ml",
+        order: "TEST",
+        round: "1",
+        flavor: "Mixed with vanilla",
+        sweetness: "less sweet",
+        ice: "less ice",
+        message: "Kitchen printer is connected.",
+        toppings: ["Tapioca"],
+        extraShots: []
       };
     }
 
@@ -196,7 +184,7 @@ export class PrintJobService {
       displayCreatedAt,
       items: [
         {
-          name: "Lootea's Brown Sugar 700ml",
+          name: "Sample milk tea 700ml",
           qty: 1,
           price: 129,
           unitPrice: 129
@@ -217,7 +205,7 @@ export class PrintJobService {
       },
       payments: [{ method: "Card - Contactless", amount: 327 }],
       company: {
-        company_name: "Lootea",
+        company_name: "Sample company",
         company_address: "Test address",
         company_city: "Prague",
         company_poscode: "11000",
@@ -230,7 +218,7 @@ export class PrintJobService {
         createdAt: displayCreatedAt,
         items: [
           {
-            name: "Lootea's Brown Sugar 700ml",
+            name: "Sample milk tea 700ml",
             qty: 1,
             price: 129,
             unitPrice: 129
@@ -248,7 +236,7 @@ export class PrintJobService {
         vat: [{ rate: 21, amount: 56.75 }],
         paymentMethod: "Card - Contactless",
         exchangeRate: "25.00 CZK/EUR",
-        company_name: "Lootea",
+        company_name: "Sample company",
         company_address: "Test address",
         company_city: "Prague",
         company_poscode: "11000",

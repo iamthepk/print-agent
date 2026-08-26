@@ -3,6 +3,7 @@ import type {
   AgentConfig,
   AgentConfigPatch,
   PrinterAdapterMode,
+  ReceiptPrintMode,
   PrinterRole,
   PrinterRoleConfig,
   PrinterRoleConfigs,
@@ -30,7 +31,8 @@ const createDefaultRoleConfig = (): PrinterRoleConfigs => ({
   receipt: {
     enabled: true,
     printerName: null,
-    paperName: null
+    paperName: null,
+    receiptPrintMode: "pdf"
   },
   kitchen: {
     enabled: false,
@@ -64,6 +66,10 @@ const normalizePrinterAdapterMode = (value: unknown): PrinterAdapterMode => {
   return value === "simulated" ? "simulated" : "windows";
 };
 
+const normalizeReceiptPrintMode = (value: unknown): ReceiptPrintMode => {
+  return value === "escpos" ? "escpos" : "pdf";
+};
+
 const normalizeServer = (value: unknown): ServerConfig => {
   const input = isRecord(value) ? value : {};
   const host = typeof input.host === "string" && input.host.trim() ? input.host.trim() : "127.0.0.1";
@@ -88,7 +94,10 @@ const normalizeRole = (role: PrinterRole, value: unknown): PrinterRoleConfig => 
   return {
     enabled,
     printerName,
-    paperName
+    paperName,
+    receiptPrintMode: role === "receipt"
+      ? normalizeReceiptPrintMode(input.receiptPrintMode)
+      : undefined
   };
 };
 

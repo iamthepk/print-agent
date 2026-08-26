@@ -157,15 +157,16 @@ function buildReceiptLines(payload: unknown, charsPerLine: number): ReceiptLine[
   const orderNumber = firstString(receipt, ["orderNumber", "order_number", "orderId"]);
   const receiptNumber =
     firstString(receipt, ["receiptNumber", "receipt_number"]) ?? orderNumber;
-  const companyName =
-    firstString(receipt, ["company_name", "headerText", "companyName"]) ?? "Lootea";
+  const companyName = firstString(receipt, ["company_name", "headerText", "companyName"]);
 
   if (orderNumber) {
     lines.push({ text: `#${orderNumber}`, align: "right", emphasis: "bold" });
   }
 
-  lines.push({ text: companyName, align: "center", emphasis: "title" });
-  lines.push({ text: "" });
+  if (companyName) {
+    lines.push({ text: companyName, align: "center", emphasis: "title" });
+    lines.push({ text: "" });
+  }
 
   appendOptionalCentered(lines, firstString(receipt, ["company_VAT", "companyVat", "dic", "ico"]));
   appendOptionalCentered(lines, firstString(receipt, ["company_address", "companyAddress"]));
@@ -182,7 +183,15 @@ function buildReceiptLines(payload: unknown, charsPerLine: number): ReceiptLine[
 
   lines.push({ text: "" });
 
-  const totalCZK = firstNumber(receipt, ["totalCZK", "total_czk"]);
+  const totalCZK = firstNumber(receipt, [
+    "totalCZK",
+    "total_czk",
+    "total",
+    "totalAmount",
+    "total_amount",
+    "grandTotal",
+    "grand_total"
+  ]);
   const isRefund =
     receipt.isRefund === true ||
     firstString(receipt, ["kind"]) === "refund_receipt" ||
@@ -220,7 +229,7 @@ function buildReceiptLines(payload: unknown, charsPerLine: number): ReceiptLine[
   const items = asArray(receipt.items);
   let itemCount = 0;
 
-  for (const itemValue of items) {
+  for (const [index, itemValue] of items.entries()) {
     const item = asRecord(itemValue) ?? {};
     const quantity = firstNumber(item, ["quantity", "qty"]) ?? 1;
     const unitPrice = firstNumber(item, ["unitPrice", "unit_price", "price"]) ?? 0;
@@ -229,27 +238,32 @@ function buildReceiptLines(payload: unknown, charsPerLine: number): ReceiptLine[
     const displayUnitPrice = isRefund ? -Math.abs(unitPrice) : unitPrice;
     const displayLineTotal = isRefund ? -Math.abs(lineTotal) : lineTotal;
     const name = firstString(item, ["name", "productName", "title"]) ?? "Item";
-    const modifierLines = extractItemModifiers(item);
+    const displayLines = buildItemDisplayLines(item, name);
+    const itemReceiptLines: ReceiptLine[] = [];
 
     itemCount += quantity;
 
-    for (const wrapped of wrapText(name, charsPerLine)) {
-      lines.push({ text: wrapped, emphasis: "bold" });
-    }
-
-    for (const modifier of modifierLines) {
-      for (const wrapped of wrapText(modifier, charsPerLine)) {
-        lines.push({ text: wrapped });
+    displayLines.forEach((displayLine, lineIndex) => {
+      for (const wrapped of wrapText(displayLine, charsPerLine)) {
+        itemReceiptLines.push({
+          text: wrapped,
+          emphasis: lineIndex === 0 ? "bold" : "normal"
+        });
       }
-    }
+    });
 
     if (quantity > 1) {
-      lines.push({
+      itemReceiptLines.push({
         text: padLine(`${formatQuantity(quantity)} x ${formatMoney(displayUnitPrice)}`, "", charsPerLine)
       });
     }
 
-    lines.push({ text: padLine("", formatMoney(displayLineTotal), charsPerLine) });
+    appendAmountToItemLines(itemReceiptLines, formatMoney(displayLineTotal), charsPerLine);
+    lines.push(...itemReceiptLines);
+
+    if (index < items.length - 1) {
+      lines.push({ text: dottedSeparator(charsPerLine) });
+    }
   }
 
   lines.push({ text: "" }, { text: separator(charsPerLine) });
@@ -267,7 +281,7 @@ function buildReceiptLines(payload: unknown, charsPerLine: number): ReceiptLine[
   }
 
   const vatItems = asArray(receipt.vat);
-  for (const vatItemValue of vatItems) {
+  for (const vatItemValue of vatItems.length > 0 ? vatItems : asArray(receipt.taxes)) {
     const vatItem = asRecord(vatItemValue);
     if (!vatItem) continue;
 
@@ -337,7 +351,7 @@ function buildReceiptLines(payload: unknown, charsPerLine: number): ReceiptLine[
 
 function buildTestReceiptLines(receipt: UnknownRecord, charsPerLine: number): ReceiptLine[] {
   return [
-    { text: "LOOTEA PRINT TEST", align: "center", emphasis: "title" },
+    { text: "PRINT AGENT TEST", align: "center", emphasis: "title" },
     { text: "" },
     { text: `Date: ${formatDate(firstString(receipt, ["createdAt"]) ?? new Date().toISOString())}` },
     { text: "" },
@@ -479,6 +493,60 @@ function appendOptionalCentered(lines: ReceiptLine[], value: string | null | und
   if (value) {
     lines.push({ text: value, align: "center" });
   }
+}
+
+function buildItemDisplayLines(item: UnknownRecord, fallbackName: string): string[] {
+  const lines = splitReceiptTextLines(fallbackName);
+
+  for (const modifier of extractItemModifiers(item)) {
+    appendUniqueLine(lines, modifier);
+  }
+
+  return lines.length > 0 ? lines : ["Item"];
+}
+
+function splitReceiptTextLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => normalizeReceiptTextLine(line))
+    .filter((line): line is string => Boolean(line));
+}
+
+function normalizeReceiptTextLine(value: string | null): string | null {
+  const normalized = value?.replace(/\s+/g, " ").trim();
+  return normalized ? normalized : null;
+}
+
+function appendUniqueLine(lines: string[], value: string): void {
+  const normalized = normalizeReceiptTextLine(value);
+  if (!normalized) {
+    return;
+  }
+
+  const normalizedKey = normalized.toLowerCase();
+  const exists = lines.some((line) => line.toLowerCase() === normalizedKey);
+  if (!exists) {
+    lines.push(normalized);
+  }
+}
+
+function appendAmountToItemLines(
+  lines: ReceiptLine[],
+  amount: string,
+  charsPerLine: number
+): void {
+  if (lines.length === 0) {
+    lines.push({ text: padLine("", amount, charsPerLine) });
+    return;
+  }
+
+  const lastLine = lines[lines.length - 1];
+  if (lastLine.text.length + amount.length + 1 <= charsPerLine) {
+    lastLine.text = padLine(lastLine.text, amount, charsPerLine);
+    return;
+  }
+
+  lines.push({ text: padLine("", amount, charsPerLine) });
 }
 
 function extractItemModifiers(item: UnknownRecord): string[] {
@@ -637,6 +705,10 @@ function formatPlainLine(line: ReceiptLine, charsPerLine: number): string {
 
 function separator(charsPerLine: number): string {
   return "-".repeat(charsPerLine);
+}
+
+function dottedSeparator(charsPerLine: number): string {
+  return ".".repeat(charsPerLine);
 }
 
 function firstString(record: UnknownRecord, keys: string[]): string | null {

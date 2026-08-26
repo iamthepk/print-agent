@@ -9,6 +9,8 @@ export type TunnelProvider = "none" | "ngrok" | "custom";
 
 export type PrinterAdapterMode = "windows" | "simulated";
 
+export type ReceiptPrintMode = "pdf" | "escpos";
+
 export type AgentStatus = "ok" | "degraded" | "error";
 
 export interface ServerConfig {
@@ -20,6 +22,7 @@ export interface PrinterRoleConfig {
   enabled: boolean;
   printerName: string | null;
   paperName?: string | null;
+  receiptPrintMode?: ReceiptPrintMode;
 }
 
 export type PrinterRoleConfigs = Record<PrinterRole, PrinterRoleConfig>;

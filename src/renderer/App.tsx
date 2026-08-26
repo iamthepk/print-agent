@@ -18,6 +18,7 @@ import type {
   AdminState,
   AgentConfig,
   PrinterAdapterMode,
+  ReceiptPrintMode,
   PrinterRole,
   PrinterRoleConfig,
   SystemPrinter,
@@ -40,6 +41,11 @@ const TUNNEL_LABELS: Record<TunnelProvider, string> = {
 const ADAPTER_LABELS: Record<PrinterAdapterMode, string> = {
   windows: "Windows",
   simulated: "Simulated"
+};
+
+const RECEIPT_PRINT_MODE_LABELS: Record<ReceiptPrintMode, string> = {
+  pdf: "SumatraPDF (PDF)",
+  escpos: "POS/ESC raw"
 };
 
 const maskUrl = (url: string | null): string => {
@@ -532,6 +538,7 @@ function RoleRow(props: {
   const selectedPrinter = props.printers.find((printer) => printer.name === props.roleConfig.printerName);
   const paperSizes = selectedPrinter?.paperSizes ?? [];
   const showMediaSelect = props.role === "kitchen" && paperSizes.length > 0;
+  const showReceiptModeSelect = props.role === "receipt";
   const statusTone = props.status.online === true
     ? "online"
     : props.status.online === false
@@ -588,6 +595,25 @@ function RoleRow(props: {
             {paperSizes.map((paperSize) => (
               <option key={paperSize.name} value={paperSize.name}>
                 {paperSize.name}{paperSize.isDefault ? " (driver)" : ""}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {showReceiptModeSelect && (
+          <select
+            aria-label="Receipt print method"
+            title="Receipt print method"
+            value={props.roleConfig.receiptPrintMode ?? "pdf"}
+            onChange={(event) =>
+              props.onChange({
+                receiptPrintMode: event.currentTarget.value as ReceiptPrintMode
+              })
+            }
+          >
+            {Object.entries(RECEIPT_PRINT_MODE_LABELS).map(([mode, label]) => (
+              <option key={mode} value={mode}>
+                {label}
               </option>
             ))}
           </select>

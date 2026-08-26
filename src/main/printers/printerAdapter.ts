@@ -1,4 +1,4 @@
-import type { PrinterRole, SystemPrinter } from "../../shared/protocol";
+import type { PrinterRole, ReceiptPrintMode, SystemPrinter } from "../../shared/protocol";
 
 export interface AdapterPrintRequest {
   role: PrinterRole;
@@ -7,6 +7,7 @@ export interface AdapterPrintRequest {
   templateId: string;
   copies: number;
   payload: unknown;
+  receiptPrintMode?: ReceiptPrintMode;
 }
 
 export interface AdapterOperationResult {

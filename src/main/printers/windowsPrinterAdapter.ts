@@ -1,13 +1,16 @@
 import { app } from "electron";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { PrinterPaperSize, PrinterRole, SystemPrinter } from "../../shared/protocol";
 import type { Logger } from "../logging/logger";
 import type { RuntimePaths } from "../runtimePaths";
+import { generateKitchenLabelPng } from "../templates/kitchenLabelImageTemplate";
 import { renderKitchenLabelEscPos, renderKitchenLabelText } from "../templates/kitchenLabelTemplate";
 import { renderReceiptEscPos, renderReceiptText } from "../templates/receiptEscposTemplate";
+import { generateReceiptPdf } from "../templates/receiptPdfTemplate";
 import type { AdapterOperationResult, AdapterPrintRequest, PrinterAdapter } from "./printerAdapter";
 
 const execFileAsync = promisify(execFile);
@@ -478,6 +481,36 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
   }
 
   async print(request: AdapterPrintRequest): Promise<AdapterOperationResult> {
+    if (request.role === "receipt") {
+      if ((request.receiptPrintMode ?? "pdf") === "pdf") {
+        const pdfResult = await this.printReceiptPdfFallback(request);
+        if (pdfResult.ok) {
+          return pdfResult;
+        }
+
+        this.logger.warn("SumatraPDF receipt print failed, trying ESC/POS raw fallback", {
+          printerName: request.printerName,
+          message: pdfResult.message,
+          errorCode: pdfResult.errorCode
+        });
+      }
+
+      return this.printEscPosWithDriverFallback(request);
+    }
+
+    if (request.role === "kitchen" || this.isLabelPrinter(request.printerName)) {
+      const imageResult = await this.printKitchenLabelImageFallback(request);
+      if (imageResult.ok) {
+        return imageResult;
+      }
+
+      this.logger.warn("Kitchen label image print failed, trying text fallback", {
+        printerName: request.printerName,
+        message: imageResult.message,
+        errorCode: imageResult.errorCode
+      });
+    }
+
     const result = await this.runHelper({
       operation: "print",
       printerName: request.printerName,
@@ -502,6 +535,94 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
         message: rawResult.message
       });
     }
+
+    return this.printDriverFallback(request);
+  }
+
+  private async printKitchenLabelImageFallback(
+    request: AdapterPrintRequest
+  ): Promise<AdapterOperationResult> {
+    if (process.platform !== "win32") {
+      return {
+        ok: false,
+        errorCode: "unsupported_platform",
+        message: "Kitchen label image printing is only available on Windows."
+      };
+    }
+
+    const irfanViewPath = this.findIrfanViewPath();
+    if (!irfanViewPath) {
+      return {
+        ok: false,
+        errorCode: "irfanview_missing",
+        message: "IrfanView was not found."
+      };
+    }
+
+    let imagePath: string | null = null;
+
+    try {
+      imagePath = await generateKitchenLabelPng(request.payload, this.paths.dataDir);
+      const copies = Math.max(1, Math.min(10, request.copies));
+
+      for (let copy = 0; copy < copies; copy += 1) {
+        await execFileAsync(irfanViewPath, [
+          imagePath,
+          `/print=${request.printerName}`,
+          "/silent",
+          "/hide"
+        ], {
+          timeout: 30000,
+          windowsHide: true,
+          maxBuffer: 1024 * 1024
+        });
+      }
+
+      this.logger.info("Printed kitchen label through IrfanView image path", {
+        role: request.role,
+        printerName: request.printerName,
+        imagePath,
+        copies,
+        irfanViewPath
+      });
+
+      return {
+        ok: true,
+        message: `Printed kitchen label image through IrfanView on ${request.printerName}.`
+      };
+    } catch (error) {
+      this.logger.warn("Kitchen label image print failed", {
+        printerName: request.printerName,
+        imagePath,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return {
+        ok: false,
+        errorCode: "irfanview_print_failed",
+        message: error instanceof Error ? error.message : String(error)
+      };
+    } finally {
+      if (imagePath) {
+        setTimeout(() => {
+          void fs.unlink(imagePath as string).catch(() => undefined);
+        }, 5000);
+      }
+    }
+  }
+
+  private async printEscPosWithDriverFallback(
+    request: AdapterPrintRequest
+  ): Promise<AdapterOperationResult> {
+    const rawResult = await this.printRawFallback(request);
+    if (rawResult.ok) {
+      return rawResult;
+    }
+
+    this.logger.warn("ESC/POS raw receipt print failed, trying Windows driver fallback", {
+      printerName: request.printerName,
+      message: rawResult.message,
+      errorCode: rawResult.errorCode
+    });
 
     return this.printDriverFallback(request);
   }
@@ -671,6 +792,69 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
     }
   }
 
+  private async printReceiptPdfFallback(request: AdapterPrintRequest): Promise<AdapterOperationResult> {
+    if (process.platform !== "win32") {
+      return {
+        ok: false,
+        errorCode: "unsupported_platform",
+        message: "SumatraPDF receipt printing is only available on Windows."
+      };
+    }
+
+    const sumatraPath = this.findSumatraPdfPath();
+    if (!sumatraPath) {
+      return {
+        ok: false,
+        errorCode: "sumatra_missing",
+        message: "SumatraPDF.exe was not found."
+      };
+    }
+
+    let pdfPath: string | null = null;
+    try {
+      pdfPath = await generateReceiptPdf(request.payload, this.paths.dataDir);
+      await execFileAsync(sumatraPath, [
+        "-print-to",
+        request.printerName,
+        "-silent",
+        pdfPath
+      ], {
+        timeout: 30000,
+        windowsHide: true,
+        maxBuffer: 1024 * 1024
+      });
+
+      this.logger.info("Printed receipt through SumatraPDF", {
+        role: request.role,
+        printerName: request.printerName,
+        pdfPath,
+        sumatraPath
+      });
+
+      return {
+        ok: true,
+        message: `Printed receipt through SumatraPDF on ${request.printerName}.`
+      };
+    } catch (error) {
+      this.logger.warn("SumatraPDF receipt print failed", {
+        printerName: request.printerName,
+        pdfPath,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return {
+        ok: false,
+        errorCode: "sumatra_print_failed",
+        message: error instanceof Error ? error.message : String(error)
+      };
+    } finally {
+      if (pdfPath) {
+        setTimeout(() => {
+          void fs.unlink(pdfPath as string).catch(() => undefined);
+        }, 5000);
+      }
+    }
+  }
+
   private renderDriverDocument(request: AdapterPrintRequest): string {
     if (request.role === "kitchen" || this.isLabelPrinter(request.printerName)) {
       return renderKitchenLabelText(request.payload);
@@ -815,6 +999,49 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
     return request.role === "kitchen" || this.isLabelPrinter(request.printerName)
       ? "label_rotate_90"
       : "normal";
+  }
+
+  private findSumatraPdfPath(): string | null {
+    const candidates = [
+      process.env.SUMATRA_PATH,
+      process.env.LOCALAPPDATA
+        ? path.join(process.env.LOCALAPPDATA, "SumatraPDF", "SumatraPDF.exe")
+        : null,
+      path.join("C:", "Program Files", "SumatraPDF", "SumatraPDF.exe"),
+      path.join("C:", "Program Files (x86)", "SumatraPDF", "SumatraPDF.exe")
+    ].filter((candidate): candidate is string => Boolean(candidate && candidate.trim()));
+
+    for (const candidate of candidates) {
+      const normalized = candidate.replace(/^"|"$/g, "");
+      if (existsSync(normalized)) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private findIrfanViewPath(): string | null {
+    const candidates = [
+      process.env.IRFANVIEW_PATH,
+      path.join("C:", "Program Files", "IrfanView", "i_view64.exe"),
+      path.join("C:", "Program Files", "IrfanView", "i_view32.exe"),
+      process.env["ProgramFiles(x86)"]
+        ? path.join(process.env["ProgramFiles(x86)"], "IrfanView", "i_view64.exe")
+        : null,
+      process.env["ProgramFiles(x86)"]
+        ? path.join(process.env["ProgramFiles(x86)"], "IrfanView", "i_view32.exe")
+        : null
+    ].filter((candidate): candidate is string => Boolean(candidate && candidate.trim()));
+
+    for (const candidate of candidates) {
+      const normalized = candidate.replace(/^"|"$/g, "");
+      if (existsSync(normalized)) {
+        return normalized;
+      }
+    }
+
+    return null;
   }
 
   private shouldUseEscPosRaw(request: AdapterPrintRequest): boolean {
