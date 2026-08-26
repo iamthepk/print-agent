@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, clipboard, dialog, ipcMain, nativeImage } from "electron";
+import { app, BrowserWindow, Menu, Tray, clipboard, dialog, ipcMain, nativeImage, nativeTheme } from "electron";
 import path from "node:path";
 import type { AgentConfigPatch, PrinterRole } from "../shared/protocol";
 import { AGENT_VERSION, PROTOCOL_VERSION } from "../shared/protocol";
@@ -44,12 +44,13 @@ const createWindow = async (showOnCreate: boolean): Promise<void> => {
   }
 
   mainWindow = new BrowserWindow({
-    width: 1120,
-    height: 760,
-    minWidth: 920,
-    minHeight: 620,
+    width: 960,
+    height: 620,
+    minWidth: 760,
+    minHeight: 500,
     show: showOnCreate,
     title: "Print Agent",
+    backgroundColor: "#101113",
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -236,6 +237,8 @@ const registerIpcHandlers = (): void => {
 };
 
 const bootstrap = async (): Promise<void> => {
+  nativeTheme.themeSource = "dark";
+
   const paths = resolveRuntimePaths();
   logger = new Logger(paths);
 

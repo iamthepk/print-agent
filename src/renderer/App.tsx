@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Archive,
   AlertTriangle,
   CheckCircle2,
   Copy,
@@ -10,11 +9,9 @@ import {
   LogOut,
   Power,
   Printer,
-  Receipt,
   RefreshCw,
   RotateCcw,
-  Save,
-  Utensils
+  Save
 } from "lucide-react";
 import type {
   AdminBootstrap,
@@ -32,12 +29,6 @@ const ROLE_LABELS: Record<PrinterRole, string> = {
   receipt: "Receipt",
   kitchen: "Kitchen",
   cash_drawer: "Cash drawer"
-};
-
-const ROLE_ICONS: Record<PrinterRole, typeof Receipt> = {
-  receipt: Receipt,
-  kitchen: Utensils,
-  cash_drawer: Archive
 };
 
 const TUNNEL_LABELS: Record<TunnelProvider, string> = {
@@ -94,6 +85,7 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const authenticated = bootstrap?.authenticated === true;
 
@@ -194,20 +186,32 @@ export function App() {
     });
   };
 
-  const saveConfig = () => runAction(async () => {
+  const saveConfig = async () => {
     if (!draft) {
       return;
     }
 
-    const nextState = await window.printAgent.saveConfig({
-      remoteAccessUrl: draft.remoteAccessUrl,
-      tunnelProvider: draft.tunnelProvider,
-      printerAdapterMode: draft.printerAdapterMode,
-      printerRoles: draft.printerRoles
-    });
-    setState(nextState);
-    setDraft(cloneConfig(nextState.config));
-  }, "Configuration saved.");
+    setBusy(true);
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const nextState = await window.printAgent.saveConfig({
+        remoteAccessUrl: draft.remoteAccessUrl,
+        tunnelProvider: draft.tunnelProvider,
+        printerAdapterMode: draft.printerAdapterMode,
+        printerRoles: draft.printerRoles
+      });
+      setState(nextState);
+      setDraft(cloneConfig(nextState.config));
+    } catch (saveError) {
+      setError(readError(saveError));
+    } finally {
+      setSaving(false);
+      setBusy(false);
+    }
+  };
 
   const refresh = () => runAction(loadState, "Status refreshed.");
 
@@ -270,21 +274,26 @@ export function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div>
-          <div className="eyebrow">Windows</div>
+        <div className="brand-lockup">
           <h1>Print Agent</h1>
         </div>
         <div className="topbar-actions">
-          <StatusBadge status={state.health.status} />
+          <IconButton
+            title={dirty ? "Save configuration" : "Configuration saved"}
+            onClick={() => void saveConfig()}
+            disabled={!dirty || busy}
+            className={dirty ? "primary" : "saved"}
+          >
+            <Save size={18} />
+            <span>{saving ? "Saving" : dirty ? "Save" : "Saved"}</span>
+          </IconButton>
           <IconButton title="Refresh" onClick={refresh} disabled={busy}>
             <RefreshCw size={18} />
-            <span>Refresh</span>
           </IconButton>
           <IconButton title="Export log" onClick={() => void runAction(async () => {
             await window.printAgent.exportLogs();
           }, "Log exported.")} disabled={busy}>
             <Download size={18} />
-            <span>Logs</span>
           </IconButton>
           <IconButton title="Restart" onClick={() => void window.printAgent.restart()}>
             <RotateCcw size={18} />
@@ -318,10 +327,25 @@ export function App() {
         </section>
       )}
 
-      <section className="summary-grid">
-        <Metric label="Agent" value={state.health.agentVersion} detail={`Protocol ${state.health.protocolVersion}`} />
-        <Metric label="Local URL" value={state.localUrl} detail="HTTP API" copyValue={state.localUrl} />
-        <Metric label="Remote URL" value={maskUrl(draft.remoteAccessUrl)} detail={TUNNEL_LABELS[draft.tunnelProvider]} />
+      <section className="endpoint-bar">
+        <div className="endpoint-group">
+          <span>Local API</span>
+          <button
+            className="endpoint-copy"
+            title="Copy local URL"
+            type="button"
+            onClick={() => void navigator.clipboard.writeText(state.localUrl)}
+          >
+            <strong>{state.localUrl}</strong>
+            <Copy size={15} />
+          </button>
+        </div>
+
+        <div className="endpoint-group remote">
+          <span>Remote</span>
+          <strong>{maskUrl(draft.remoteAccessUrl)}</strong>
+          <small>{TUNNEL_LABELS[draft.tunnelProvider]}</small>
+        </div>
       </section>
 
       <section className="layout-grid">
@@ -329,12 +353,8 @@ export function App() {
           <div className="panel-heading">
             <div>
               <div className="section-label">Printers</div>
-              <h2>Roles</h2>
+              <h2>Printer roles</h2>
             </div>
-            <IconButton title="Save" onClick={saveConfig} disabled={!dirty || busy}>
-              <Save size={18} />
-              <span>Save</span>
-            </IconButton>
           </div>
 
           <div className="role-list">
@@ -360,17 +380,11 @@ export function App() {
               <div className="section-label">Connection</div>
               <h2>Access</h2>
             </div>
-            <div className="panel-actions">
-              <IconButton title="Save" onClick={saveConfig} disabled={!dirty || busy}>
-                <Save size={18} />
-                <span>Save</span>
-              </IconButton>
-              <IconButton title="Copy remote URL" onClick={() => void runAction(async () => {
-                await window.printAgent.copyRemoteUrl();
-              }, "URL copied.")}>
-                <Copy size={18} />
-              </IconButton>
-            </div>
+            <IconButton title="Copy remote URL" onClick={() => void runAction(async () => {
+              await window.printAgent.copyRemoteUrl();
+            }, "URL copied.")}>
+              <Copy size={18} />
+            </IconButton>
           </div>
 
           <label className="field">
@@ -423,6 +437,8 @@ export function App() {
           </div>
         </div>
       </section>
+
+      <footer className="app-footer">© pK v1.0</footer>
     </main>
   );
 }
@@ -492,31 +508,13 @@ function LoadingScreen() {
   return (
     <main className="auth-shell">
       <div className="loading-panel">
-        <Printer size={30} />
-        <span>Starting Print Agent</span>
+        <div className="boot-loader" aria-label="Loading">
+          <span />
+          <span />
+          <span />
+        </div>
       </div>
     </main>
-  );
-}
-
-function Metric(props: { label: string; value: string; detail: string; copyValue?: string }) {
-  return (
-    <div className="metric">
-      <span>{props.label}</span>
-      <strong>{props.value}</strong>
-      <div>
-        <small>{props.detail}</small>
-        {props.copyValue && (
-          <button
-            className="icon-only"
-            title={`Copy ${props.label}`}
-            onClick={() => void navigator.clipboard.writeText(props.copyValue ?? "")}
-          >
-            <Copy size={15} />
-          </button>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -530,23 +528,20 @@ function RoleRow(props: {
   onTest: () => void;
   busy: boolean;
 }) {
-  const Icon = ROLE_ICONS[props.role];
   const roleDirty = JSON.stringify(props.roleConfig) !== JSON.stringify(props.savedRoleConfig);
   const selectedPrinter = props.printers.find((printer) => printer.name === props.roleConfig.printerName);
   const paperSizes = selectedPrinter?.paperSizes ?? [];
+  const showMediaSelect = props.role === "kitchen" && paperSizes.length > 0;
   const statusTone = props.status.online === true
     ? "online"
     : props.status.online === false
       ? "offline"
       : "neutral";
-  const statusText = roleDirty ? "pending_save" : props.status.statusText;
+  const statusText = roleDirty ? "Unsaved" : props.status.statusText;
 
   return (
     <div className="role-row">
       <div className="role-title">
-        <div className="role-icon">
-          <Icon size={20} />
-        </div>
         <div>
           <strong>{ROLE_LABELS[props.role]}</strong>
           <span className={`role-status ${roleDirty ? "neutral" : statusTone}`}>{statusText}</span>
@@ -570,7 +565,7 @@ function RoleRow(props: {
             const printer = props.printers.find((candidate) => candidate.name === printerName);
             props.onChange({
               printerName,
-              paperName: printer?.defaultPaperName ?? null
+              paperName: props.role === "cash_drawer" ? null : printer?.defaultPaperName ?? null
             });
           }}
         >
@@ -582,14 +577,14 @@ function RoleRow(props: {
           ))}
         </select>
 
-        {paperSizes.length > 0 && (
+        {showMediaSelect && (
           <select
             aria-label={`${ROLE_LABELS[props.role]} media size`}
             title={`${ROLE_LABELS[props.role]} media size`}
             value={props.roleConfig.paperName ?? ""}
             onChange={(event) => props.onChange({ paperName: event.currentTarget.value || null })}
           >
-            <option value="">Driver media</option>
+            <option value="">Printer default</option>
             {paperSizes.map((paperSize) => (
               <option key={paperSize.name} value={paperSize.name}>
                 {paperSize.name}{paperSize.isDefault ? " (driver)" : ""}
@@ -600,7 +595,7 @@ function RoleRow(props: {
       </div>
 
       <IconButton
-        title={roleDirty ? `Save ${ROLE_LABELS[props.role]} before test` : `Test ${ROLE_LABELS[props.role]}`}
+        title={roleDirty ? `Save ${ROLE_LABELS[props.role]} changes before test` : `Test ${ROLE_LABELS[props.role]}`}
         onClick={props.onTest}
         disabled={props.busy || roleDirty}
       >
@@ -611,24 +606,16 @@ function RoleRow(props: {
   );
 }
 
-function StatusBadge({ status }: { status: AdminState["health"]["status"] }) {
-  return (
-    <div className={`status-badge ${status}`}>
-      {status === "ok" ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
-      <span>{status}</span>
-    </div>
-  );
-}
-
 function IconButton(props: {
   title: string;
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
     <button
-      className="icon-button"
+      className={`icon-button${props.className ? ` ${props.className}` : ""}`}
       title={props.title}
       type="button"
       onClick={props.onClick}
