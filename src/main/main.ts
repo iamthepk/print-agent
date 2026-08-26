@@ -22,16 +22,25 @@ let logger: Logger;
 let apiServer: HttpApiServer;
 let printJobService: PrintJobService;
 
-const createTrayIcon = () => {
-  const svg = [
-    "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'>",
-    "<rect width='32' height='32' rx='7' fill='#111827'/>",
-    "<path d='M9 12h14a3 3 0 0 1 3 3v6h-4v5H10v-5H6v-6a3 3 0 0 1 3-3Z' fill='#f8fafc'/>",
-    "<path d='M11 6h10v6H11V6Zm2 14h6v3h-6v-3Z' fill='#14b8a6'/>",
-    "</svg>"
-  ].join("");
+const resolveAssetPath = (fileName: string): string => {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "assets", fileName);
+  }
 
-  return nativeImage.createFromDataURL(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+  return path.join(app.getAppPath(), "assets", fileName);
+};
+
+const resolveIconPath = (): string => resolveAssetPath("icon.ico");
+
+const createTrayIcon = () => {
+  const iconPath = resolveIconPath();
+  const icon = nativeImage.createFromPath(iconPath);
+
+  if (icon.isEmpty()) {
+    logger.warn("Tray icon asset could not be loaded", { iconPath });
+  }
+
+  return icon;
 };
 
 const createWindow = async (showOnCreate: boolean): Promise<void> => {
@@ -50,6 +59,7 @@ const createWindow = async (showOnCreate: boolean): Promise<void> => {
     minHeight: 500,
     show: showOnCreate,
     title: "Print Agent",
+    icon: resolveIconPath(),
     backgroundColor: "#101113",
     autoHideMenuBar: true,
     webPreferences: {
@@ -238,6 +248,7 @@ const registerIpcHandlers = (): void => {
 
 const bootstrap = async (): Promise<void> => {
   nativeTheme.themeSource = "dark";
+  app.setAppUserModelId("app.printagent.desktop");
 
   const paths = resolveRuntimePaths();
   logger = new Logger(paths);

@@ -7,7 +7,7 @@ HTTP API for POS printing.
 
 Implemented in this first pass:
 
-- Electron main process with tray menu.
+- Electron main process with app/tray icon and tray menu.
 - React/Vite admin UI protected by an admin PIN.
 - Runtime config outside the repository.
 - API token generation, one-time reveal, regeneration, and scrypt hashing.
@@ -18,7 +18,7 @@ Implemented in this first pass:
   - `GET /printers`
   - `GET /config`
   - `PATCH /config`
-  - `POST /print-jobs`
+  - `POST /print-jobs` (`/print-job` compatibility alias)
   - `POST /test/receipt`
   - `POST /test/kitchen`
   - `POST /test/drawer`
@@ -186,3 +186,4 @@ valid token, it returns detailed capabilities and configured printer status.
 
 Repeated automatic requests with the same `jobId` return `already_processed`.
 Manual reprints should use a fresh `jobId`.
+

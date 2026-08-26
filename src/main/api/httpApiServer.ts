@@ -13,7 +13,8 @@ const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PATCH,OPTIONS",
-  "access-control-allow-headers": "content-type,authorization,x-print-agent-token"
+  "access-control-allow-headers": "content-type,authorization,x-print-agent-token,ngrok-skip-browser-warning",
+  "access-control-allow-private-network": "true"
 };
 
 export class HttpApiServer {
@@ -133,7 +134,7 @@ export class HttpApiServer {
       });
     }
 
-    if (method === "POST" && pathname === "/print-jobs") {
+    if (method === "POST" && (pathname === "/print-jobs" || pathname === "/print-job")) {
       return this.withToken(async (request, response) => {
         const body = await this.readJson<PrintJobRequest>(request);
         const result = await this.printJobService.processJob(body);
