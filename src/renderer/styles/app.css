@@ -302,6 +302,12 @@ button:disabled {
   background: #fbfcfd;
 }
 
+.printer-select-stack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
 .role-title {
   display: flex;
   align-items: center;

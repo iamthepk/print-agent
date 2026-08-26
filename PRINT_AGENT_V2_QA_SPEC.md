@@ -186,12 +186,15 @@ Pravidla:
 - simulated mod slouzi pro overeni UI, API contractu, token auth, drawer flow a dedupe,
 - skutecny tisk se overuje az s `WinSpoolerHelper.exe`.
 
-Do doplneni `WinSpoolerHelper.exe` muze `windows` backend podporovat basic text fallback:
+Do doplneni `WinSpoolerHelper.exe` muze `windows` backend podporovat basic fallback:
 
-- receipt/kitchen test se posle pres Windows `Out-Printer` jako plain text,
+- receipt a ESC/POS-like tiskarny se poslou pres Windows RAW spooler,
+- ostatni kitchen tiskarny se mohou poslat pres Windows driver/GDI jako plain text,
+- label tiskarny mohou mit ulozeny presny format media podle role,
+- cash drawer test muze poslat ESC/POS drawer pulse pres RAW spooler,
 - fallback overuje, ze agent vidi a dokaze oslovit Windows tiskarnu,
 - fallback neni finalni thermal/sticker layout,
-- cash drawer fallback se nedela, protoze otevreni zasuvky vyzaduje raw printer command.
+- drawer fallback funguje jen pokud je zasuvka fyzicky pripojena k ESC/POS tiskarne nebo kompatibilnimu drawer portu.
 
 ## Kitchen Tisk
 

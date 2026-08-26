@@ -29,15 +29,18 @@ const DEFAULT_PORT = 47821;
 const createDefaultRoleConfig = (): PrinterRoleConfigs => ({
   receipt: {
     enabled: true,
-    printerName: null
+    printerName: null,
+    paperName: null
   },
   kitchen: {
     enabled: false,
-    printerName: null
+    printerName: null,
+    paperName: null
   },
   cash_drawer: {
     enabled: false,
-    printerName: null
+    printerName: null,
+    paperName: null
   }
 });
 
@@ -78,10 +81,14 @@ const normalizeRole = (role: PrinterRole, value: unknown): PrinterRoleConfig => 
   const printerName = typeof input.printerName === "string" && input.printerName.trim()
     ? input.printerName.trim()
     : null;
+  const paperName = typeof input.paperName === "string" && input.paperName.trim()
+    ? input.paperName.trim()
+    : null;
 
   return {
     enabled,
-    printerName
+    printerName,
+    paperName
   };
 };
 

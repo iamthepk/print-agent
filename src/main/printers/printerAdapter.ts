@@ -3,6 +3,7 @@ import type { PrinterRole, SystemPrinter } from "../../shared/protocol";
 export interface AdapterPrintRequest {
   role: PrinterRole;
   printerName: string;
+  paperName?: string | null;
   templateId: string;
   copies: number;
   payload: unknown;

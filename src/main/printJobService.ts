@@ -116,6 +116,7 @@ export class PrintJobService {
       const result = await this.adapter.print({
         role,
         printerName,
+        paperName: roleConfig.paperName ?? null,
         templateId: task.templateId ?? `${role}.default`,
         copies: Math.max(1, Math.min(10, task.copies ?? 1)),
         payload: task.payload

@@ -29,10 +29,11 @@ Implemented in this first pass:
 - NSIS installer configuration through `electron-builder`.
 
 The repository does not yet include the native `WinSpoolerHelper.exe` binary.
-In `Windows` backend mode, receipt and kitchen jobs fall back to Windows
-`Out-Printer` text printing when the helper is missing. Cash drawer pulses still
-require the helper because opening the drawer needs raw printer commands. Use
-`Simulated` backend mode for local UI/API tests without physical printer output.
+In `Windows` backend mode, receipt jobs and ESC/POS-like printers fall back to
+direct Windows RAW spooler output when the helper is missing. Other kitchen
+printers fall back to Windows driver/GDI text rendering. Cash drawer tests fall
+back to an ESC/POS drawer pulse. Use `Simulated` backend mode for local UI/API
+tests without physical printer output.
 
 ## Runtime paths
 
@@ -121,12 +122,31 @@ To print a real page without the helper:
 1. Make sure the printer is installed and visible in Windows.
 2. Keep `Printer backend` set to `Windows`.
 3. Select the installed printer for `Receipt` or `Kitchen`.
-4. Click `Save`.
-5. Click `Test`.
+4. For label printers, select the media size that matches the roll installed in
+   the printer.
+5. Click `Save`.
+6. Click `Test`.
 
-The fallback prints a plain text diagnostic page through Windows. It is useful
-for proving that the agent can reach the printer, but it is not the final
-thermal receipt/sticker layout.
+The fallback prints a diagnostic page through Windows. On receipt/ESC-POS
+printers it uses RAW spooler output; on other printers it renders text through
+the installed Windows driver. It is useful for proving that the agent can reach
+the printer, but it is not the final receipt/sticker layout.
+
+For a direct RAW spooler test without opening the app:
+
+```powershell
+.\scripts\send-raw-printer-test.ps1 -PrinterName "EPSON TM-T20III Receipt"
+.\scripts\send-raw-printer-test.ps1 -PrinterName "EPSON TM-T20III Receipt" -Mode drawer
+```
+
+For a direct Windows-driver test without opening the app:
+
+```powershell
+.\scripts\send-gdi-printer-test.ps1 -PrinterName "Brother QL-700" -PaperName "62mm x 29mm"
+```
+
+The drawer command only works when the cash drawer is physically connected to
+that printer's drawer port and the printer supports the ESC/POS pulse command.
 
 ## Token auth
 

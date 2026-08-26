@@ -19,6 +19,7 @@ export interface ServerConfig {
 export interface PrinterRoleConfig {
   enabled: boolean;
   printerName: string | null;
+  paperName?: string | null;
 }
 
 export type PrinterRoleConfigs = Record<PrinterRole, PrinterRoleConfig>;
@@ -39,11 +40,22 @@ export interface AgentConfigPatch {
   printerRoles?: Partial<Record<PrinterRole, Partial<PrinterRoleConfig>>>;
 }
 
+export interface PrinterPaperSize {
+  name: string;
+  width: number;
+  height: number;
+  isDefault?: boolean;
+}
+
 export interface SystemPrinter {
   name: string;
   online: boolean | null;
   statusText: string;
   isDefault?: boolean;
+  driverName?: string;
+  defaultPaperName?: string | null;
+  defaultLandscape?: boolean | null;
+  paperSizes?: PrinterPaperSize[];
 }
 
 export interface RolePrinterStatus {

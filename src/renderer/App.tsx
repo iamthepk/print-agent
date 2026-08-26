@@ -532,6 +532,8 @@ function RoleRow(props: {
 }) {
   const Icon = ROLE_ICONS[props.role];
   const roleDirty = JSON.stringify(props.roleConfig) !== JSON.stringify(props.savedRoleConfig);
+  const selectedPrinter = props.printers.find((printer) => printer.name === props.roleConfig.printerName);
+  const paperSizes = selectedPrinter?.paperSizes ?? [];
   const statusTone = props.status.online === true
     ? "online"
     : props.status.online === false
@@ -560,17 +562,42 @@ function RoleRow(props: {
         <span>Enabled</span>
       </label>
 
-      <select
-        value={props.roleConfig.printerName ?? ""}
-        onChange={(event) => props.onChange({ printerName: event.currentTarget.value || null })}
-      >
-        <option value="">None</option>
-        {props.printers.map((printer) => (
-          <option key={printer.name} value={printer.name}>
-            {printer.name}{printer.isDefault ? " (default)" : ""}
-          </option>
-        ))}
-      </select>
+      <div className="printer-select-stack">
+        <select
+          value={props.roleConfig.printerName ?? ""}
+          onChange={(event) => {
+            const printerName = event.currentTarget.value || null;
+            const printer = props.printers.find((candidate) => candidate.name === printerName);
+            props.onChange({
+              printerName,
+              paperName: printer?.defaultPaperName ?? null
+            });
+          }}
+        >
+          <option value="">None</option>
+          {props.printers.map((printer) => (
+            <option key={printer.name} value={printer.name}>
+              {printer.name}{printer.isDefault ? " (default)" : ""}
+            </option>
+          ))}
+        </select>
+
+        {paperSizes.length > 0 && (
+          <select
+            aria-label={`${ROLE_LABELS[props.role]} media size`}
+            title={`${ROLE_LABELS[props.role]} media size`}
+            value={props.roleConfig.paperName ?? ""}
+            onChange={(event) => props.onChange({ paperName: event.currentTarget.value || null })}
+          >
+            <option value="">Driver media</option>
+            {paperSizes.map((paperSize) => (
+              <option key={paperSize.name} value={paperSize.name}>
+                {paperSize.name}{paperSize.isDefault ? " (driver)" : ""}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
 
       <IconButton
         title={roleDirty ? `Save ${ROLE_LABELS[props.role]} before test` : `Test ${ROLE_LABELS[props.role]}`}
