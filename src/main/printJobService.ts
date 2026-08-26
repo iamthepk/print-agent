@@ -147,15 +147,116 @@ export class PrintJobService {
       tasks: [{
         role,
         templateId: role === "kitchen" ? "kitchen.default" : "receipt.default",
-        payload: {
-          kind: "test",
-          createdAt: new Date().toISOString()
-        }
+        payload: this.buildTestPayload(role)
       }]
     };
 
     const response = await this.processJob(request);
     return response.results[0];
+  }
+
+  private buildTestPayload(role: PrinterRole): unknown {
+    const now = new Date();
+    const createdAt = now.toISOString();
+    const displayCreatedAt = now.toLocaleString("cs-CZ", { hour12: false });
+
+    if (role === "kitchen") {
+      return {
+        kind: "kitchen_label",
+        orderId: "TEST",
+        itemId: "1",
+        productName: "Lootea's Brown Sugar 700ml",
+        modifiers: [
+          "Mixed with vanilla",
+          "less sweet",
+          "less ice",
+          "Tapioca"
+        ],
+        note: "Smile, You are beautiful!",
+        createdAt,
+        label: {
+          pcs: "1",
+          name: "Lootea's Brown Sugar 700ml",
+          order: "TEST",
+          round: "1",
+          flavor: "Mixed with vanilla",
+          sweetness: "less sweet",
+          ice: "less ice",
+          toppings: ["Tapioca"],
+          extraShots: []
+        }
+      };
+    }
+
+    return {
+      kind: "receipt",
+      orderId: "TEST",
+      receiptNumber: "TEST-RECEIPT",
+      createdAt,
+      displayCreatedAt,
+      items: [
+        {
+          name: "Lootea's Brown Sugar 700ml",
+          qty: 1,
+          price: 129,
+          unitPrice: 129
+        },
+        {
+          name: "Matcha Latte 500ml",
+          qty: 2,
+          price: 99,
+          unitPrice: 99
+        }
+      ],
+      totals: {
+        subtotal: 327,
+        totalCZK: 327,
+        totalEUR: 13.08,
+        vat: [{ rate: 21, amount: 56.75 }],
+        exchangeRate: "25.00 CZK/EUR"
+      },
+      payments: [{ method: "Card - Contactless", amount: 327 }],
+      company: {
+        company_name: "Lootea",
+        company_address: "Test address",
+        company_city: "Prague",
+        company_poscode: "11000",
+        company_country: "Czech Republic",
+        company_VAT: "VAT CZ test"
+      },
+      receipt: {
+        receiptNumber: "TEST-RECEIPT",
+        orderNumber: "TEST",
+        createdAt: displayCreatedAt,
+        items: [
+          {
+            name: "Lootea's Brown Sugar 700ml",
+            qty: 1,
+            price: 129,
+            unitPrice: 129
+          },
+          {
+            name: "Matcha Latte 500ml",
+            qty: 2,
+            price: 99,
+            unitPrice: 99
+          }
+        ],
+        subtotal: 327,
+        totalCZK: 327,
+        totalEUR: 13.08,
+        vat: [{ rate: 21, amount: 56.75 }],
+        paymentMethod: "Card - Contactless",
+        exchangeRate: "25.00 CZK/EUR",
+        company_name: "Lootea",
+        company_address: "Test address",
+        company_city: "Prague",
+        company_poscode: "11000",
+        company_country: "Czech Republic",
+        company_VAT: "VAT CZ test",
+        footer_custom_text: "Thank you"
+      }
+    };
   }
 
   private buildRoleStatus(

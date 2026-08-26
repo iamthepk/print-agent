@@ -67,5 +67,8 @@
       "createStartMenuShortcut": true,
       "runAfterFinish": true
     }
+  },
+  "dependencies": {
+    "iconv-lite": "^0.6.3"
   }
 }

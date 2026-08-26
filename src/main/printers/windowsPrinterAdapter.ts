@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import type { PrinterPaperSize, PrinterRole, SystemPrinter } from "../../shared/protocol";
 import type { Logger } from "../logging/logger";
 import type { RuntimePaths } from "../runtimePaths";
+import { renderKitchenLabelEscPos, renderKitchenLabelText } from "../templates/kitchenLabelTemplate";
+import { renderReceiptEscPos, renderReceiptText } from "../templates/receiptEscposTemplate";
 import type { AdapterOperationResult, AdapterPrintRequest, PrinterAdapter } from "./printerAdapter";
 
 const execFileAsync = promisify(execFile);
@@ -135,7 +137,8 @@ param(
   [Parameter(Mandatory=$true)][string]$Base64Text,
   [Parameter(Mandatory=$true)][string]$DocumentName,
   [AllowEmptyString()][string]$SelectedPaperName,
-  [Parameter(Mandatory=$true)][int]$Copies
+  [Parameter(Mandatory=$true)][int]$Copies,
+  [AllowEmptyString()][string]$LayoutMode = 'normal'
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -256,7 +259,21 @@ for ($copy = 0; $copy -lt $Copies; $copy++) {
 
       $layout = New-Object System.Drawing.RectangleF -ArgumentList ([single]$bounds.Left), ([single]$bounds.Top), ([single]$bounds.Width), ([single]$bounds.Height)
 
-      $event.Graphics.DrawString($text, $font, [System.Drawing.Brushes]::Black, $layout, $format)
+      if ($LayoutMode -eq 'label_rotate_90') {
+        $event.Graphics.TranslateTransform([single]($bounds.Left + $bounds.Width), [single]$bounds.Top)
+        $event.Graphics.RotateTransform(90.0)
+        $rotatedLayout = New-Object System.Drawing.RectangleF -ArgumentList 0.0, 0.0, ([single]$bounds.Height), ([single]$bounds.Width)
+        $event.Graphics.DrawString($text, $font, [System.Drawing.Brushes]::Black, $rotatedLayout, $format)
+        $event.Graphics.ResetTransform()
+      } elseif ($LayoutMode -eq 'label_rotate_180') {
+        $event.Graphics.TranslateTransform([single]($bounds.Left + $bounds.Width), [single]($bounds.Top + $bounds.Height))
+        $event.Graphics.RotateTransform(180.0)
+        $rotatedLayout = New-Object System.Drawing.RectangleF -ArgumentList 0.0, 0.0, ([single]$bounds.Width), ([single]$bounds.Height)
+        $event.Graphics.DrawString($text, $font, [System.Drawing.Brushes]::Black, $rotatedLayout, $format)
+        $event.Graphics.ResetTransform()
+      } else {
+        $event.Graphics.DrawString($text, $font, [System.Drawing.Brushes]::Black, $layout, $format)
+      }
       $event.HasMorePages = $false
     }
 
@@ -280,7 +297,7 @@ for ($copy = 0; $copy -lt $Copies; $copy++) {
   }
 }
 
-@{ printed = $printed; paper = $selectedPaper; landscape = $selectedLandscape } | ConvertTo-Json -Compress
+@{ printed = $printed; paper = $selectedPaper; landscape = $selectedLandscape; layout = $LayoutMode } | ConvertTo-Json -Compress
 `;
 
 const DISCOVER_PRINTERS_SCRIPT = `
@@ -615,14 +632,16 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
       const { stdout } = await this.runPowerShellScript(DRIVER_PRINT_SCRIPT, [
         request.printerName,
         Buffer.from(document, "utf8").toString("base64"),
-        `Print Agent ${request.role} test`,
+        this.getDocumentName(request),
         request.paperName ?? "",
-        String(copies)
+        String(copies),
+        this.getDriverLayoutMode(request)
       ]);
       const parsed = JSON.parse(stdout.trim() || "{}") as {
         printed?: number;
         paper?: string;
         landscape?: boolean;
+        layout?: string;
       };
 
       this.logger.info("Printed through Windows driver fallback", {
@@ -631,7 +650,8 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
         paperName: request.paperName ?? null,
         copies: parsed.printed ?? copies,
         paper: parsed.paper,
-        landscape: parsed.landscape
+        landscape: parsed.landscape,
+        layout: parsed.layout
       });
 
       return {
@@ -653,42 +673,10 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
 
   private renderDriverDocument(request: AdapterPrintRequest): string {
     if (request.role === "kitchen" || this.isLabelPrinter(request.printerName)) {
-      if (this.isCompactPaper(request.paperName)) {
-        return [
-          request.role === "kitchen" ? "KITCHEN TEST" : "PRINT TEST",
-          request.paperName ?? "label",
-          new Date().toLocaleTimeString("cs-CZ", { hour12: false })
-        ].join("\r\n");
-      }
-
-      const payloadSummary = this.formatPayloadInline(request.payload);
-      return [
-        request.role === "kitchen" ? "KITCHEN TEST" : "PRINT TEST",
-        `Printer: ${request.printerName}`,
-        `Time: ${new Date().toLocaleString("cs-CZ", { hour12: false })}`,
-        `Payload: ${payloadSummary}`
-      ].join("\r\n");
+      return renderKitchenLabelText(request.payload);
     }
 
-    const title = request.role === "cash_drawer" ? "DRAWER TEST PRINT" : "RECEIPT TEST PRINT";
-    const lines = [
-      title,
-      "=".repeat(title.length),
-      "",
-      `Template: ${request.templateId}`,
-      `Role: ${request.role}`,
-      `Printer: ${request.printerName}`,
-      `Printed at: ${new Date().toISOString()}`,
-      "",
-      "Payload:",
-      this.formatPayload(request.payload),
-      "",
-      "---",
-      "Print Agent Windows driver fallback",
-      "\f"
-    ];
-
-    return lines.join("\r\n");
+    return renderReceiptText(request.payload);
   }
 
   private async printRawFallback(request: AdapterPrintRequest): Promise<AdapterOperationResult> {
@@ -696,7 +684,7 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
     const result = await this.sendRawBytes(
       request.printerName,
       payload,
-      `Print Agent ${request.role} test`
+      this.getDocumentName(request)
     );
 
     if (!result.ok) {
@@ -804,35 +792,29 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
   }
 
   private buildEscPosPrintPayload(request: AdapterPrintRequest): Buffer {
-    const title = request.role === "kitchen" ? "KITCHEN TEST PRINT" : "RECEIPT TEST PRINT";
-    const text = [
-      title,
-      "=".repeat(title.length),
-      "",
-      `Template: ${request.templateId}`,
-      `Role: ${request.role}`,
-      `Printer: ${request.printerName}`,
-      `Printed at: ${new Date().toISOString()}`,
-      "",
-      "Payload:",
-      this.formatPayload(request.payload),
-      "",
-      "",
-      ""
-    ].join("\n");
-
     const copies = Math.max(1, Math.min(10, request.copies));
     const chunks: Buffer[] = [];
 
     for (let copy = 0; copy < copies; copy += 1) {
       chunks.push(
-        Buffer.from([0x1b, 0x40]),
-        Buffer.from(this.toPrintableAscii(text), "ascii"),
-        Buffer.from([0x0a, 0x0a, 0x0a, 0x1d, 0x56, 0x00])
+        request.role === "kitchen"
+          ? renderKitchenLabelEscPos(request.payload)
+          : renderReceiptEscPos(request.payload)
       );
     }
 
     return Buffer.concat(chunks);
+  }
+
+  private getDocumentName(request: AdapterPrintRequest): string {
+    const templateName = request.templateId || `${request.role}.default`;
+    return `Print Agent ${request.role} ${templateName}`;
+  }
+
+  private getDriverLayoutMode(request: AdapterPrintRequest): string {
+    return request.role === "kitchen" || this.isLabelPrinter(request.printerName)
+      ? "label_rotate_90"
+      : "normal";
   }
 
   private shouldUseEscPosRaw(request: AdapterPrintRequest): boolean {
@@ -848,52 +830,6 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
     return normalized.includes("BROTHER")
       || normalized.includes("QL-")
       || normalized.includes("LABEL");
-  }
-
-  private isCompactPaper(paperName: string | null | undefined): boolean {
-    if (!paperName) {
-      return false;
-    }
-
-    const normalized = paperName.toLowerCase();
-    return normalized.includes("62mm x 29mm")
-      || normalized.includes("29mm x 42mm")
-      || normalized.includes("23mm x 23mm")
-      || normalized === "12mm"
-      || normalized === "29mm"
-      || normalized === "38mm"
-      || normalized === "50mm"
-      || normalized === "54mm"
-      || normalized === "62mm";
-  }
-
-  private formatPayloadInline(payload: unknown): string {
-    const formatted = this.formatPayload(payload).replace(/\s+/g, " ").trim();
-    if (formatted.length <= 72) {
-      return formatted;
-    }
-
-    return `${formatted.slice(0, 69)}...`;
-  }
-
-  private formatPayload(payload: unknown): string {
-    if (payload === null || payload === undefined) {
-      return "(empty)";
-    }
-
-    if (typeof payload === "string") {
-      return payload;
-    }
-
-    try {
-      return JSON.stringify(payload, null, 2);
-    } catch {
-      return String(payload);
-    }
-  }
-
-  private toPrintableAscii(value: string): string {
-    return value.replace(/[^\x0a\x0d\x20-\x7e]/g, "?");
   }
 
   private async findHelperPath(): Promise<string | null> {
