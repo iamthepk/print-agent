@@ -8,20 +8,33 @@ import type {
   PrinterRoleConfig,
   PrinterRoleConfigs,
   ServerConfig,
+  TunnelConfig,
   TunnelProvider
 } from "../../shared/protocol";
 import { PRINTER_ROLES } from "../../shared/protocol";
-import { generateApiToken, hashSecret, validateAdminPin, verifySecret } from "../auth/secrets";
+import {
+  decryptLocalSecret,
+  encryptLocalSecret,
+  generateApiToken,
+  hashSecret,
+  verifySecret
+} from "../auth/secrets";
 import type { Logger } from "../logging/logger";
 import type { RuntimePaths } from "../runtimePaths";
 import { ensureRuntimePaths } from "../runtimePaths";
 
-interface StoredAgentConfig extends AgentConfig {
+interface StoredTunnelConfig {
+  autostart: boolean;
+  ngrokDomain: string | null;
+  ngrokAuthTokenEncrypted: string | null;
+}
+
+interface StoredAgentConfig extends Omit<AgentConfig, "tunnel"> {
+  tunnel: StoredTunnelConfig;
   auth: {
     apiTokenHash: string;
     apiTokenCreatedAt: string;
     apiTokenShownAt: string | null;
-    adminPinHash: string | null;
   };
 }
 
@@ -44,6 +57,12 @@ const createDefaultRoleConfig = (): PrinterRoleConfigs => ({
     printerName: null,
     paperName: null
   }
+});
+
+const defaultTunnelConfig = (): StoredTunnelConfig => ({
+  autostart: false,
+  ngrokDomain: null,
+  ngrokAuthTokenEncrypted: null
 });
 
 const defaultServerConfig = (): ServerConfig => ({
@@ -116,6 +135,11 @@ const redactConfig = (stored: StoredAgentConfig): AgentConfig => ({
   server: stored.server,
   remoteAccessUrl: stored.remoteAccessUrl,
   tunnelProvider: stored.tunnelProvider,
+  tunnel: {
+    autostart: stored.tunnel.autostart,
+    ngrokDomain: stored.tunnel.ngrokDomain,
+    ngrokAuthTokenSet: Boolean(stored.tunnel.ngrokAuthTokenEncrypted)
+  },
   printerAdapterMode: stored.printerAdapterMode,
   printerRoles: stored.printerRoles
 });
@@ -143,20 +167,20 @@ export class ConfigService {
     return `http://${host}:${port}`;
   }
 
-  isSetupRequired(): boolean {
-    return !this.requireConfig().auth.adminPinHash;
+  getNgrokAuthToken(): string | null {
+    const encrypted = this.requireConfig().tunnel.ngrokAuthTokenEncrypted;
+    try {
+      return decryptLocalSecret(encrypted);
+    } catch (error) {
+      this.logger.warn("Ngrok auth token could not be decrypted", {
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
   }
 
-  verifyAdminPin(pin: string): boolean {
-    return verifySecret(pin, this.requireConfig().auth.adminPinHash ?? undefined);
-  }
-
-  async setAdminPin(pin: string): Promise<void> {
-    validateAdminPin(pin);
-    const config = this.requireConfig();
-    config.auth.adminPinHash = hashSecret(pin);
-    await this.save();
-    this.logger.info("Admin PIN configured");
+  hasInitialApiToken(): boolean {
+    return Boolean(this.initialApiToken);
   }
 
   verifyApiToken(token: string | undefined): boolean {
@@ -207,6 +231,22 @@ export class ConfigService {
       config.tunnelProvider = normalizeTunnelProvider(patch.tunnelProvider);
     }
 
+    if (patch.tunnel) {
+      if ("autostart" in patch.tunnel) {
+        config.tunnel.autostart = patch.tunnel.autostart === true;
+      }
+
+      if ("ngrokDomain" in patch.tunnel) {
+        const nextDomain = patch.tunnel.ngrokDomain?.trim() ?? null;
+        config.tunnel.ngrokDomain = nextDomain || null;
+      }
+
+      if ("ngrokAuthToken" in patch.tunnel) {
+        const nextToken = patch.tunnel.ngrokAuthToken?.trim() ?? null;
+        config.tunnel.ngrokAuthTokenEncrypted = nextToken ? encryptLocalSecret(nextToken) : null;
+      }
+    }
+
     if (patch.printerAdapterMode) {
       config.printerAdapterMode = normalizePrinterAdapterMode(patch.printerAdapterMode);
     }
@@ -246,13 +286,13 @@ export class ConfigService {
         server: defaultServerConfig(),
         remoteAccessUrl: null,
         tunnelProvider: "none",
+        tunnel: defaultTunnelConfig(),
         printerAdapterMode: "windows",
         printerRoles: createDefaultRoleConfig(),
         auth: {
           apiTokenHash: hashSecret(token),
           apiTokenCreatedAt: createdAt,
-          apiTokenShownAt: null,
-          adminPinHash: null
+          apiTokenShownAt: null
         }
       };
 
@@ -287,6 +327,7 @@ export class ConfigService {
         ? input.remoteAccessUrl.trim()
         : null,
       tunnelProvider: normalizeTunnelProvider(input.tunnelProvider),
+      tunnel: this.normalizeStoredTunnel(input.tunnel),
       printerAdapterMode: normalizePrinterAdapterMode(input.printerAdapterMode),
       printerRoles: normalizeRoles(input.printerRoles),
       auth: {
@@ -294,9 +335,23 @@ export class ConfigService {
         apiTokenCreatedAt: typeof auth.apiTokenCreatedAt === "string"
           ? auth.apiTokenCreatedAt
           : new Date().toISOString(),
-        apiTokenShownAt: typeof auth.apiTokenShownAt === "string" ? auth.apiTokenShownAt : null,
-        adminPinHash: typeof auth.adminPinHash === "string" ? auth.adminPinHash : null
+        apiTokenShownAt: typeof auth.apiTokenShownAt === "string" ? auth.apiTokenShownAt : null
       }
+    };
+  }
+
+  private normalizeStoredTunnel(value: unknown): StoredTunnelConfig {
+    const input = isRecord(value) ? value : {};
+
+    return {
+      autostart: input.autostart === true,
+      ngrokDomain: typeof input.ngrokDomain === "string" && input.ngrokDomain.trim()
+        ? input.ngrokDomain.trim()
+        : null,
+      ngrokAuthTokenEncrypted: typeof input.ngrokAuthTokenEncrypted === "string"
+        && input.ngrokAuthTokenEncrypted.trim()
+        ? input.ngrokAuthTokenEncrypted.trim()
+        : null
     };
   }
 

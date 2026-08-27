@@ -19,7 +19,7 @@ function Write-InstallerLog {
 
   $line = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message
   Add-Content -Path $logPath -Value $line -Encoding UTF8
-  Write-Output $line
+  [Console]::Out.WriteLine(("[{0}] {1}" -f $Level, $Message))
 }
 
 function Add-Warning {
@@ -38,6 +38,13 @@ function Get-ExistingExecutable {
     }
 
     $expanded = [Environment]::ExpandEnvironmentVariables($candidate.Trim('"'))
+    if ($expanded -notmatch "[\\/]" -and $expanded.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+      $command = Get-Command $expanded -ErrorAction SilentlyContinue
+      if ($null -ne $command -and -not [string]::IsNullOrWhiteSpace($command.Source)) {
+        return $command.Source
+      }
+    }
+
     if (Test-Path -LiteralPath $expanded -PathType Leaf) {
       return $expanded
     }
@@ -58,6 +65,49 @@ function Get-ExecutableVersion {
   } catch {
     return $null
   }
+}
+
+function Convert-ToComparableVersion {
+  param([AllowEmptyString()][string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $null
+  }
+
+  $match = [regex]::Match($Value, "\d+(\.\d+){0,3}")
+  if (-not $match.Success) {
+    return $null
+  }
+
+  try {
+    return [version]$match.Value
+  } catch {
+    return $null
+  }
+}
+
+function Get-BundledPackageVersion {
+  param([Parameter(Mandatory = $true)][string]$PackageId)
+
+  $packageDir = Join-Path $PSScriptRoot "packages"
+  if (-not (Test-Path -LiteralPath $packageDir -PathType Container)) {
+    return $null
+  }
+
+  $yamlFiles = Get-ChildItem -LiteralPath $packageDir -Filter "*.yaml" -File -ErrorAction SilentlyContinue
+  foreach ($yamlFile in $yamlFiles) {
+    $content = Get-Content -LiteralPath $yamlFile.FullName -Raw
+    if ($content -notmatch "(?m)^PackageIdentifier:\s*$([regex]::Escape($PackageId))\s*$") {
+      continue
+    }
+
+    $versionMatch = [regex]::Match($content, "(?m)^PackageVersion:\s*(.+?)\s*$")
+    if ($versionMatch.Success) {
+      return $versionMatch.Groups[1].Value.Trim()
+    }
+  }
+
+  return $null
 }
 
 function Get-WingetPath {
@@ -100,8 +150,12 @@ function Invoke-BundledInstaller {
   param(
     [Parameter(Mandatory = $true)][string]$DisplayName,
     [Parameter(Mandatory = $true)][string[]]$Patterns,
-    [Parameter(Mandatory = $true)][string[]]$SilentArguments
+    [AllowEmptyCollection()][string[]]$SilentArguments = @()
   )
+
+  if ($Patterns.Count -eq 0) {
+    return $false
+  }
 
   $packageDir = Join-Path $PSScriptRoot "packages"
   if (-not (Test-Path -LiteralPath $packageDir -PathType Container)) {
@@ -118,7 +172,18 @@ function Invoke-BundledInstaller {
     }
 
     Write-InstallerLog -Message ("Installing {0} from bundled installer {1}" -f $DisplayName, $installer.FullName)
-    $process = Start-Process -FilePath $installer.FullName -ArgumentList $SilentArguments -Wait -PassThru -WindowStyle Hidden
+    $startProcessArgs = @{
+      FilePath = $installer.FullName
+      Wait = $true
+      PassThru = $true
+      WindowStyle = "Hidden"
+    }
+
+    if ($SilentArguments.Count -gt 0) {
+      $startProcessArgs.ArgumentList = $SilentArguments
+    }
+
+    $process = Start-Process @startProcessArgs
     if ($process.ExitCode -ne 0) {
       Add-Warning ("Bundled {0} installer exited with code {1}." -f $DisplayName, $process.ExitCode)
       return $false
@@ -130,21 +195,90 @@ function Invoke-BundledInstaller {
   return $false
 }
 
+function Expand-BundledArchive {
+  param(
+    [Parameter(Mandatory = $true)][string]$DisplayName,
+    [Parameter(Mandatory = $true)][string[]]$Patterns,
+    [Parameter(Mandatory = $true)][string]$Destination
+  )
+
+  if ($Patterns.Count -eq 0) {
+    return $false
+  }
+
+  $packageDir = Join-Path $PSScriptRoot "packages"
+  if (-not (Test-Path -LiteralPath $packageDir -PathType Container)) {
+    return $false
+  }
+
+  foreach ($pattern in $Patterns) {
+    $archive = Get-ChildItem -LiteralPath $packageDir -Filter $pattern -File -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+
+    if ($null -eq $archive) {
+      continue
+    }
+
+    Write-InstallerLog -Message ("Extracting bundled {0} archive {1} to {2}" -f $DisplayName, $archive.FullName, $Destination)
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Expand-Archive -LiteralPath $archive.FullName -DestinationPath $Destination -Force
+    return $true
+  }
+
+  return $false
+}
+
 function Ensure-WingetPackage {
   param(
     [Parameter(Mandatory = $true)][string]$DisplayName,
     [Parameter(Mandatory = $true)][string]$PackageId,
     [Parameter(Mandatory = $true)][string[]]$ExecutableCandidates,
-    [Parameter(Mandatory = $true)][string[]]$BundledPatterns,
-    [Parameter(Mandatory = $true)][string[]]$BundledSilentArguments
+    [AllowEmptyCollection()][string[]]$BundledPatterns = @(),
+    [AllowEmptyCollection()][string[]]$BundledSilentArguments = @(),
+    [string[]]$BundledArchivePatterns = @(),
+    [string]$BundledArchiveDestination = ""
   )
 
+  Write-InstallerLog -Message ("--- Checking {0} ---" -f $DisplayName)
+  $bundledVersion = Get-BundledPackageVersion -PackageId $PackageId
   $existingBefore = Get-ExistingExecutable -Candidates $ExecutableCandidates
   if ($null -ne $existingBefore) {
     $version = Get-ExecutableVersion -Path $existingBefore
-    Write-InstallerLog -Message ("{0} found at {1}{2}" -f $DisplayName, $existingBefore, $(if ($version) { " (version $version)" } else { "" }))
+    Write-InstallerLog -Message ("{0}: already installed at {1}{2}" -f $DisplayName, $existingBefore, $(if ($version) { " (version $version)" } else { "" }))
+
+    $existingComparable = Convert-ToComparableVersion -Value $version
+    $bundledComparable = Convert-ToComparableVersion -Value $bundledVersion
+    if ($null -ne $bundledComparable -and $null -ne $existingComparable -and $existingComparable -ge $bundledComparable) {
+      Write-InstallerLog -Message ("{0}: existing version is current for this installer package. Skipping install." -f $DisplayName)
+      return $true
+    }
+
+    if ($null -ne $bundledComparable -and $null -ne $existingComparable) {
+      Write-InstallerLog -Message ("{0}: existing version is older than bundled version {1}. Updating." -f $DisplayName, $bundledVersion)
+    } elseif ($BundledPatterns.Count -gt 0 -or $BundledArchivePatterns.Count -gt 0) {
+      Write-InstallerLog -Message ("{0}: version could not be compared. Keeping existing installation unless it fails final validation." -f $DisplayName)
+      return $true
+    }
   } else {
-    Write-InstallerLog -Message ("{0} was not found locally." -f $DisplayName)
+    Write-InstallerLog -Message ("{0}: not found on this PC. Installing from bundled package or winget fallback." -f $DisplayName)
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($BundledArchiveDestination)) {
+    $archiveExpanded = Expand-BundledArchive `
+      -DisplayName $DisplayName `
+      -Patterns $BundledArchivePatterns `
+      -Destination $BundledArchiveDestination
+
+    if ($archiveExpanded) {
+      $existingAfterArchive = Get-ExistingExecutable -Candidates $ExecutableCandidates
+      if ($null -ne $existingAfterArchive) {
+        Write-InstallerLog -Message ("{0}: installed from bundled archive." -f $DisplayName)
+        return $true
+      }
+
+      Add-Warning ("Bundled {0} archive was extracted, but the expected executable was not found." -f $DisplayName)
+    }
   }
 
   $bundledInstalled = Invoke-BundledInstaller `
@@ -155,7 +289,7 @@ function Ensure-WingetPackage {
   if ($bundledInstalled) {
     $existingAfterBundle = Get-ExistingExecutable -Candidates $ExecutableCandidates
     if ($null -ne $existingAfterBundle) {
-      Write-InstallerLog -Message ("{0} is ready after bundled installer." -f $DisplayName)
+      Write-InstallerLog -Message ("{0}: installed from bundled installer." -f $DisplayName)
       return $true
     }
   }
@@ -164,11 +298,11 @@ function Ensure-WingetPackage {
   if ($null -eq $wingetPath) {
     $existingAfterNoWinget = Get-ExistingExecutable -Candidates $ExecutableCandidates
     if ($null -ne $existingAfterNoWinget) {
-      Add-Warning ("winget.exe was not found, so {0} could not be checked for updates. Existing installation will be used." -f $DisplayName)
+      Add-Warning ("{0}: winget.exe was not found, so updates could not be checked. Existing installation will be used." -f $DisplayName)
       return $true
     }
 
-    Add-Warning ("winget.exe was not found and {0} is missing." -f $DisplayName)
+    Add-Warning ("{0}: winget.exe was not found and the tool is missing." -f $DisplayName)
     return $false
   }
 
@@ -229,11 +363,11 @@ function Ensure-WingetPackage {
   $existingAfter = Get-ExistingExecutable -Candidates $ExecutableCandidates
   if ($null -ne $existingAfter) {
     $version = Get-ExecutableVersion -Path $existingAfter
-    Write-InstallerLog -Message ("{0} is ready at {1}{2}" -f $DisplayName, $existingAfter, $(if ($version) { " (version $version)" } else { "" }))
+    Write-InstallerLog -Message ("{0}: ready at {1}{2}" -f $DisplayName, $existingAfter, $(if ($version) { " (version $version)" } else { "" }))
     return $true
   }
 
-  Add-Warning ("{0} is still missing after installer bootstrap." -f $DisplayName)
+  Add-Warning ("{0}: still missing after installer bootstrap." -f $DisplayName)
   return $false
 }
 
@@ -253,39 +387,72 @@ function Test-WinSpoolerHelper {
 }
 
 Write-InstallerLog -Message "Starting Print Agent prerequisite setup."
+Write-InstallerLog -Message "Print Agent: application files are installed."
+Write-InstallerLog -Message "Printer drivers: skipped intentionally; Windows printer drivers depend on the connected hardware."
 Test-WinSpoolerHelper
+
+$vendorDir = Join-Path $PSScriptRoot "..\vendor"
 
 $sumatraReady = Ensure-WingetPackage `
   -DisplayName "SumatraPDF" `
   -PackageId "SumatraPDF.SumatraPDF" `
   -ExecutableCandidates @(
+    (Join-Path $vendorDir "sumatra\SumatraPDF.exe"),
     "%SUMATRA_PATH%",
     "%LOCALAPPDATA%\SumatraPDF\SumatraPDF.exe",
     "%ProgramFiles%\SumatraPDF\SumatraPDF.exe",
-    "%ProgramFiles(x86)%\SumatraPDF\SumatraPDF.exe"
+    "%ProgramFiles(x86)%\SumatraPDF\SumatraPDF.exe",
+    "C:\Program Files\SumatraPDF\SumatraPDF.exe",
+    "C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe"
   ) `
   -BundledPatterns @("SumatraPDF*.exe", "Sumatra*.exe") `
-  -BundledSilentArguments @("-install", "-silent")
+  -BundledSilentArguments @("-install", "-silent", "-all-users") `
+  -BundledArchivePatterns @("SumatraPDF*.zip", "Sumatra*.zip") `
+  -BundledArchiveDestination (Join-Path $vendorDir "sumatra")
 
 $irfanReady = Ensure-WingetPackage `
   -DisplayName "IrfanView" `
   -PackageId "IrfanSkiljan.IrfanView" `
   -ExecutableCandidates @(
+    (Join-Path $vendorDir "irfanview\i_view64.exe"),
+    (Join-Path $vendorDir "irfanview\i_view32.exe"),
     "%IRFANVIEW_PATH%",
     "%ProgramFiles%\IrfanView\i_view64.exe",
     "%ProgramFiles%\IrfanView\i_view32.exe",
     "%ProgramFiles(x86)%\IrfanView\i_view64.exe",
-    "%ProgramFiles(x86)%\IrfanView\i_view32.exe"
+    "%ProgramFiles(x86)%\IrfanView\i_view32.exe",
+    "C:\Program Files\IrfanView\i_view64.exe",
+    "C:\Program Files\IrfanView\i_view32.exe",
+    "C:\Program Files (x86)\IrfanView\i_view64.exe",
+    "C:\Program Files (x86)\IrfanView\i_view32.exe"
   ) `
   -BundledPatterns @("iview*.exe", "irfanview*.exe", "IrfanView*.exe") `
-  -BundledSilentArguments @("/silent", "/desktop=0", "/thumbs=0", "/group=1", "/allusers=1")
+  -BundledSilentArguments @("/silent", "/desktop=0", "/thumbs=0", "/group=1", "/allusers=1") `
+  -BundledArchivePatterns @("iview*.zip", "irfanview*.zip", "IrfanView*.zip") `
+  -BundledArchiveDestination (Join-Path $vendorDir "irfanview")
 
-if ($sumatraReady -and $irfanReady -and -not $hadWarnings) {
+$ngrokReady = Ensure-WingetPackage `
+  -DisplayName "ngrok" `
+  -PackageId "Ngrok.Ngrok" `
+  -ExecutableCandidates @(
+    (Join-Path $vendorDir "ngrok\ngrok.exe"),
+    "ngrok.exe",
+    "%ProgramFiles%\ngrok\ngrok.exe",
+    "%ProgramFiles(x86)%\ngrok\ngrok.exe",
+    "%LOCALAPPDATA%\ngrok\ngrok.exe",
+    "%LOCALAPPDATA%\Microsoft\WinGet\Links\ngrok.exe"
+  ) `
+  -BundledPatterns @("ngrok*.exe") `
+  -BundledSilentArguments @() `
+  -BundledArchivePatterns @("ngrok*.zip") `
+  -BundledArchiveDestination (Join-Path $vendorDir "ngrok")
+
+if ($sumatraReady -and $irfanReady -and $ngrokReady -and -not $hadWarnings) {
   Write-InstallerLog -Message "Print Agent prerequisite setup completed successfully."
   exit 0
 }
 
-if ($sumatraReady -and $irfanReady) {
+if ($sumatraReady -and $irfanReady -and $ngrokReady) {
   Write-InstallerLog -Level "WARN" -Message "Print Agent prerequisite setup completed with non-blocking warnings."
   exit 1
 }

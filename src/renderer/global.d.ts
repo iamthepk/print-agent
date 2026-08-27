@@ -10,11 +10,10 @@ declare global {
   interface Window {
     printAgent: {
       getBootstrap: () => Promise<AdminBootstrap>;
-      setupPin: (pin: string) => Promise<{ authenticated: true; initialApiToken: string | null }>;
-      login: (pin: string) => Promise<{ authenticated: true }>;
-      logout: () => Promise<{ authenticated: false }>;
       getState: () => Promise<AdminState>;
       saveConfig: (patch: AgentConfigPatch) => Promise<AdminState>;
+      startTunnel: () => Promise<AdminState>;
+      stopTunnel: () => Promise<AdminState>;
       runTest: (role: PrinterRole) => Promise<PrintOperationResult>;
       regenerateToken: () => Promise<string>;
       copyRemoteUrl: () => Promise<boolean>;

@@ -1,13 +1,14 @@
 import http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { ApiErrorBody, AgentConfigPatch, AgentHealth, PrintJobRequest } from "../../shared/protocol";
-import { AGENT_VERSION, PROTOCOL_VERSION } from "../../shared/protocol";
+import type { ApiErrorBody, AgentConfigPatch, PrintJobRequest } from "../../shared/protocol";
 import type { ConfigService } from "../config/configService";
 import type { Logger } from "../logging/logger";
 import type { PrintJobService } from "../printJobService";
 
 type RouteHandler = (request: IncomingMessage, response: ServerResponse, url: URL) => Promise<void>;
+
+const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -16,6 +17,15 @@ const JSON_HEADERS = {
   "access-control-allow-headers": "content-type,authorization,x-print-agent-token,ngrok-skip-browser-warning",
   "access-control-allow-private-network": "true"
 };
+
+class HttpError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly body: ApiErrorBody
+  ) {
+    super(body.message);
+  }
+}
 
 export class HttpApiServer {
   private server: http.Server | null = null;
@@ -100,6 +110,11 @@ export class HttpApiServer {
 
       await route(request, response, url);
     } catch (error) {
+      if (error instanceof HttpError) {
+        this.sendJson(response, error.statusCode, error.body);
+        return;
+      }
+
       this.logger.error("HTTP request failed", {
         message: error instanceof Error ? error.message : String(error)
       });
@@ -166,20 +181,10 @@ export class HttpApiServer {
   private handleHealth: RouteHandler = async (request, response) => {
     const token = this.extractToken(request);
 
-    if (!token) {
-      const health: AgentHealth = {
-        status: "ok",
-        agentVersion: AGENT_VERSION,
-        protocolVersion: PROTOCOL_VERSION
-      };
-      this.sendJson(response, 200, health);
-      return;
-    }
-
     if (!this.configService.verifyApiToken(token)) {
       this.sendJson(response, 401, {
         error: "bad_token",
-        message: "The supplied Print Agent token is invalid."
+        message: "A valid Print Agent token is required."
       });
       return;
     }
@@ -217,8 +222,20 @@ export class HttpApiServer {
 
   private async readJson<T>(request: IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
+    let totalBytes = 0;
+
     for await (const chunk of request) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buffer.length;
+
+      if (totalBytes > MAX_JSON_BODY_BYTES) {
+        throw new HttpError(413, createApiError(
+          "payload_too_large",
+          "Request body must be 1MB or smaller."
+        ));
+      }
+
+      chunks.push(buffer);
     }
 
     const raw = Buffer.concat(chunks).toString("utf8").trim();
@@ -226,7 +243,14 @@ export class HttpApiServer {
       return {} as T;
     }
 
-    return JSON.parse(raw) as T;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      throw new HttpError(400, createApiError(
+        "invalid_json",
+        "Request body must be valid JSON."
+      ));
+    }
   }
 
   private sendJson(response: ServerResponse, statusCode: number, body: unknown): void {

@@ -16,7 +16,7 @@ POS a Print Agent budou dlouhodobe jeden produktovy ekosystem, ale instalace zus
 
 ## Zakladni Rozhodnuti
 
-- Print Agent v2 bude vyvijen v samostatnem private repozitari, aby se neporusila soucasna funkcni verze.
+- Print Agent v2 bude vyvijen v samostatnem repozitari/vetvi, aby se neporusila soucasna funkcni verze.
 - Prvni verze je pouze pro Windows.
 - Print Agent bude samostatna aplikace s instalatorem.
 - Print Agent bude mit vlastni lokalni admin UI panel.
@@ -81,7 +81,7 @@ Installer pro prvni verzi:
 - spusti agenta po instalaci,
 - prida uninstaller,
 - zachova config pri upgradu,
-- pri prvni instalaci vyzada admin heslo nebo PIN pro Agent UI.
+- pri prvnim spusteni zobrazi novy API token pro POS napojeni.
 
 Doporucene umisteni:
 
@@ -265,7 +265,7 @@ Rozhodnuti:
 - Pokud je agent offline, POS muze ulozit nastaveni s warningem.
 - V POS UI se URL zobrazuje maskovane, ne v plnem zneni.
 - Běžny zamestnanec nema videt celou remote URL ani token.
-- Admin UI agenta je chranene heslem/PINem.
+- Lokální Admin UI agenta je bez PINu; HTTP API zustava chranene API tokenem.
 
 Technicky nazev v kodu by mel byt obecny:
 
@@ -289,8 +289,10 @@ POST /test/kitchen
 POST /test/drawer
 ```
 
-Citlive endpointy vyzaduji token:
+HTTP endpointy vyzaduji token:
 
+- `/health`,
+- `/printers`,
 - `/config`,
 - `/print-jobs`,
 - `/test/receipt`,
@@ -298,9 +300,7 @@ Citlive endpointy vyzaduji token:
 - `/test/drawer`,
 - legacy endpoints, pokud zustanou zachovane.
 
-`/health` muze byt dostupny bez tokenu, ale vraci jen necitlive minimum. Pro detailni health/config/capabilities se pouzije token.
-
-`/health` ma vracet minimalne:
+`/health` s validnim tokenem vraci:
 
 ```json
 {

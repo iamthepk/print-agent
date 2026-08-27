@@ -4,14 +4,15 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  Globe2,
   KeyRound,
-  Lock,
-  LogOut,
+  Play,
   Power,
   Printer,
   RefreshCw,
   RotateCcw,
-  Save
+  Save,
+  Square
 } from "lucide-react";
 import type {
   AdminBootstrap,
@@ -78,29 +79,38 @@ const cloneConfig = (config: AgentConfig): AgentConfig => ({
     cash_drawer: {
       ...config.printerRoles.cash_drawer
     }
+  },
+  tunnel: {
+    ...config.tunnel
   }
 });
+
+const TUNNEL_STATE_LABELS = {
+  disabled: "Disabled",
+  starting: "Starting",
+  online: "Online",
+  offline: "Offline",
+  error: "Error"
+} as const;
 
 export function App() {
   const [bootstrap, setBootstrap] = useState<AdminBootstrap | null>(null);
   const [state, setState] = useState<AdminState | null>(null);
   const [draft, setDraft] = useState<AgentConfig | null>(null);
-  const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
   const [initialToken, setInitialToken] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const authenticated = bootstrap?.authenticated === true;
+  const [ngrokAuthTokenInput, setNgrokAuthTokenInput] = useState("");
 
   const dirty = useMemo(() => {
     if (!state || !draft) {
       return false;
     }
-    return JSON.stringify(state.config) !== JSON.stringify(draft);
-  }, [draft, state]);
+    return JSON.stringify(state.config) !== JSON.stringify(draft)
+      || ngrokAuthTokenInput.trim().length > 0;
+  }, [draft, ngrokAuthTokenInput, state]);
 
   useEffect(() => {
     void loadBootstrap();
@@ -110,9 +120,8 @@ export function App() {
     try {
       const nextBootstrap = await window.printAgent.getBootstrap();
       setBootstrap(nextBootstrap);
-      if (nextBootstrap.authenticated) {
-        await loadState();
-      }
+      setInitialToken(nextBootstrap.initialApiToken);
+      await loadState();
     } catch (loadError) {
       setError(readError(loadError));
     }
@@ -139,42 +148,6 @@ export function App() {
       setBusy(false);
     }
   };
-
-  const handleSetup = () => runAction(async () => {
-    if (pin !== confirmPin) {
-      throw new Error("PIN confirmation does not match.");
-    }
-    const result = await window.printAgent.setupPin(pin);
-    setBootstrap((current) => current ? {
-      ...current,
-      setupRequired: false,
-      authenticated: result.authenticated
-    } : current);
-    setInitialToken(result.initialApiToken);
-    setPin("");
-    setConfirmPin("");
-    await loadState();
-  }, "Admin PIN saved.");
-
-  const handleLogin = () => runAction(async () => {
-    const result = await window.printAgent.login(pin);
-    setBootstrap((current) => current ? {
-      ...current,
-      authenticated: result.authenticated
-    } : current);
-    setPin("");
-    await loadState();
-  });
-
-  const handleLogout = () => runAction(async () => {
-    await window.printAgent.logout();
-    setBootstrap((current) => current ? {
-      ...current,
-      authenticated: false
-    } : current);
-    setState(null);
-    setDraft(null);
-  });
 
   const updateRole = (role: PrinterRole, patch: Partial<PrinterRoleConfig>) => {
     setDraft((current) => {
@@ -206,11 +179,19 @@ export function App() {
       const nextState = await window.printAgent.saveConfig({
         remoteAccessUrl: draft.remoteAccessUrl,
         tunnelProvider: draft.tunnelProvider,
+        tunnel: {
+          autostart: draft.tunnel.autostart,
+          ngrokDomain: draft.tunnel.ngrokDomain,
+          ...(ngrokAuthTokenInput.trim()
+            ? { ngrokAuthToken: ngrokAuthTokenInput.trim() }
+            : {})
+        },
         printerAdapterMode: draft.printerAdapterMode,
         printerRoles: draft.printerRoles
       });
       setState(nextState);
       setDraft(cloneConfig(nextState.config));
+      setNgrokAuthTokenInput("");
     } catch (saveError) {
       setError(readError(saveError));
     } finally {
@@ -220,6 +201,14 @@ export function App() {
   };
 
   const refresh = () => runAction(loadState, "Status refreshed.");
+
+  const runTunnelAction = (action: "start" | "stop") => runAction(async () => {
+    const nextState = action === "start"
+      ? await window.printAgent.startTunnel()
+      : await window.printAgent.stopTunnel();
+    setState(nextState);
+    setDraft(cloneConfig(nextState.config));
+  }, action === "start" ? "Tunnel started." : "Tunnel stopped.");
 
   const runTest = (role: PrinterRole) => runAction(async () => {
     const result = await window.printAgent.runTest(role);
@@ -236,41 +225,6 @@ export function App() {
 
   if (!bootstrap) {
     return <LoadingScreen />;
-  }
-
-  if (bootstrap.setupRequired && !authenticated) {
-    return (
-      <AuthScreen
-        title="Create admin PIN"
-        icon="setup"
-        pin={pin}
-        confirmPin={confirmPin}
-        showConfirm
-        busy={busy}
-        message={message}
-        error={error}
-        onPinChange={setPin}
-        onConfirmPinChange={setConfirmPin}
-        onSubmit={handleSetup}
-      />
-    );
-  }
-
-  if (!authenticated) {
-    return (
-      <AuthScreen
-        title="Admin PIN"
-        icon="login"
-        pin={pin}
-        confirmPin={confirmPin}
-        busy={busy}
-        message={message}
-        error={error}
-        onPinChange={setPin}
-        onConfirmPinChange={setConfirmPin}
-        onSubmit={handleLogin}
-      />
-    );
   }
 
   if (!state || !draft) {
@@ -306,9 +260,6 @@ export function App() {
           </IconButton>
           <IconButton title="Quit" onClick={() => void window.printAgent.quit()}>
             <Power size={18} />
-          </IconButton>
-          <IconButton title="Log out" onClick={handleLogout} disabled={busy}>
-            <LogOut size={18} />
           </IconButton>
         </div>
       </header>
@@ -414,7 +365,13 @@ export function App() {
               value={draft.tunnelProvider}
               onChange={(event) => setDraft({
                 ...draft,
-                tunnelProvider: event.currentTarget.value as TunnelProvider
+                tunnelProvider: event.currentTarget.value as TunnelProvider,
+                tunnel: {
+                  ...draft.tunnel,
+                  autostart: event.currentTarget.value === "ngrok"
+                    ? draft.tunnel.autostart
+                    : false
+                }
               })}
             >
               {Object.entries(TUNNEL_LABELS).map(([value, label]) => (
@@ -435,6 +392,79 @@ export function App() {
             />
           </label>
 
+          {draft.tunnelProvider === "ngrok" && (
+            <div className="tunnel-box">
+              <div className="tunnel-status">
+                <Globe2 size={18} />
+                <div>
+                  <strong className={`tunnel-state ${state.tunnel.state}`}>
+                    {TUNNEL_STATE_LABELS[state.tunnel.state]}
+                  </strong>
+                  <span>{state.tunnel.publicUrl ?? state.tunnel.message ?? "No public URL"}</span>
+                </div>
+              </div>
+
+              <label className="toggle field-toggle">
+                <input
+                  type="checkbox"
+                  checked={draft.tunnel.autostart}
+                  onChange={(event) => setDraft({
+                    ...draft,
+                    tunnel: {
+                      ...draft.tunnel,
+                      autostart: event.currentTarget.checked
+                    }
+                  })}
+                />
+                <span>Start ngrok automatically</span>
+              </label>
+
+              <label className="field">
+                <span>Ngrok authtoken</span>
+                <input
+                  type="password"
+                  value={ngrokAuthTokenInput}
+                  onChange={(event) => setNgrokAuthTokenInput(event.currentTarget.value)}
+                  placeholder={draft.tunnel.ngrokAuthTokenSet ? "Saved" : "Paste ngrok authtoken"}
+                />
+              </label>
+
+              <label className="field">
+                <span>Reserved domain</span>
+                <input
+                  value={draft.tunnel.ngrokDomain ?? ""}
+                  onChange={(event) => setDraft({
+                    ...draft,
+                    tunnel: {
+                      ...draft.tunnel,
+                      ngrokDomain: event.currentTarget.value || null
+                    }
+                  })}
+                  placeholder="optional: example.ngrok.dev"
+                />
+              </label>
+
+              <div className="button-row">
+                <IconButton
+                  title="Start ngrok tunnel"
+                  onClick={() => runTunnelAction("start")}
+                  disabled={busy || dirty}
+                >
+                  <Play size={18} />
+                  <span>Start tunnel</span>
+                </IconButton>
+                <IconButton
+                  title="Stop ngrok tunnel"
+                  onClick={() => runTunnelAction("stop")}
+                  disabled={busy}
+                >
+                  <Square size={18} />
+                  <span>Stop tunnel</span>
+                </IconButton>
+              </div>
+            </div>
+          )}
+
           <div className="button-row">
             <IconButton title="Regenerate token" onClick={regenerateToken} disabled={busy}>
               <KeyRound size={18} />
@@ -444,68 +474,7 @@ export function App() {
         </div>
       </section>
 
-      <footer className="app-footer">© pK v1.0</footer>
-    </main>
-  );
-}
-
-function AuthScreen(props: {
-  title: string;
-  icon: "setup" | "login";
-  pin: string;
-  confirmPin: string;
-  showConfirm?: boolean;
-  busy: boolean;
-  message: string | null;
-  error: string | null;
-  onPinChange: (value: string) => void;
-  onConfirmPinChange: (value: string) => void;
-  onSubmit: () => void;
-}) {
-  const Icon = props.icon === "setup" ? KeyRound : Lock;
-
-  return (
-    <main className="auth-shell">
-      <form className="auth-panel" onSubmit={(event) => {
-        event.preventDefault();
-        props.onSubmit();
-      }}>
-        <div className="auth-mark">
-          <Icon size={28} />
-        </div>
-        <h1>{props.title}</h1>
-        <label className="field">
-          <span>PIN</span>
-          <input
-            autoFocus
-            type="password"
-            inputMode="numeric"
-            value={props.pin}
-            onChange={(event) => props.onPinChange(event.currentTarget.value)}
-          />
-        </label>
-        {props.showConfirm && (
-          <label className="field">
-            <span>Confirm PIN</span>
-            <input
-              type="password"
-              inputMode="numeric"
-              value={props.confirmPin}
-              onChange={(event) => props.onConfirmPinChange(event.currentTarget.value)}
-            />
-          </label>
-        )}
-        {(props.message || props.error) && (
-          <div className={`notice compact ${props.error ? "notice-error" : "notice-ok"}`}>
-            {props.error ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
-            <span>{props.error ?? props.message}</span>
-          </div>
-        )}
-        <button className="primary-button" disabled={props.busy} type="submit">
-          <Lock size={18} />
-          <span>{props.showConfirm ? "Create" : "Unlock"}</span>
-        </button>
-      </form>
+      <footer className="app-footer">Print Agent v{bootstrap.agentVersion}</footer>
     </main>
   );
 }
@@ -518,6 +487,10 @@ function LoadingScreen() {
           <span />
           <span />
           <span />
+        </div>
+        <div className="loading-copy">
+          <strong>Starting up...</strong>
+          <span>Preparing Print Agent</span>
         </div>
       </div>
     </main>

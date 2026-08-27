@@ -813,22 +813,27 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
     let pdfPath: string | null = null;
     try {
       pdfPath = await generateReceiptPdf(request.payload, this.paths.dataDir);
-      await execFileAsync(sumatraPath, [
-        "-print-to",
-        request.printerName,
-        "-silent",
-        pdfPath
-      ], {
-        timeout: 30000,
-        windowsHide: true,
-        maxBuffer: 1024 * 1024
-      });
+      const copies = Math.max(1, Math.min(10, request.copies));
+
+      for (let copy = 0; copy < copies; copy += 1) {
+        await execFileAsync(sumatraPath, [
+          "-print-to",
+          request.printerName,
+          "-silent",
+          pdfPath
+        ], {
+          timeout: 30000,
+          windowsHide: true,
+          maxBuffer: 1024 * 1024
+        });
+      }
 
       this.logger.info("Printed receipt through SumatraPDF", {
         role: request.role,
         printerName: request.printerName,
         pdfPath,
-        sumatraPath
+        sumatraPath,
+        copies
       });
 
       return {
@@ -1003,6 +1008,7 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
 
   private findSumatraPdfPath(): string | null {
     const candidates = [
+      path.join(process.resourcesPath ?? "", "vendor", "sumatra", "SumatraPDF.exe"),
       process.env.SUMATRA_PATH,
       process.env.LOCALAPPDATA
         ? path.join(process.env.LOCALAPPDATA, "SumatraPDF", "SumatraPDF.exe")
@@ -1023,6 +1029,8 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
 
   private findIrfanViewPath(): string | null {
     const candidates = [
+      path.join(process.resourcesPath ?? "", "vendor", "irfanview", "i_view64.exe"),
+      path.join(process.resourcesPath ?? "", "vendor", "irfanview", "i_view32.exe"),
       process.env.IRFANVIEW_PATH,
       path.join("C:", "Program Files", "IrfanView", "i_view64.exe"),
       path.join("C:", "Program Files", "IrfanView", "i_view32.exe"),

@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
+import { safeStorage } from "electron";
 
 const HASH_KEY_LENGTH = 32;
 const SCRYPT_PREFIX = "scrypt";
+const SAFE_STORAGE_PREFIX = "safe-storage";
+const BASE64_PREFIX = "base64";
 
 export const generateApiToken = (): string => {
   return `pa_${crypto.randomBytes(24).toString("base64url")}`;
@@ -33,8 +36,31 @@ export const verifySecret = (secret: string, storedHash: string | undefined): bo
   return crypto.timingSafeEqual(actual, expected);
 };
 
-export const validateAdminPin = (pin: string): void => {
-  if (!/^[0-9]{4,12}$/.test(pin)) {
-    throw new Error("Admin PIN must be 4 to 12 digits.");
+export const encryptLocalSecret = (secret: string): string => {
+  if (safeStorage.isEncryptionAvailable()) {
+    return `${SAFE_STORAGE_PREFIX}:${safeStorage.encryptString(secret).toString("base64")}`;
   }
+
+  return `${BASE64_PREFIX}:${Buffer.from(secret, "utf8").toString("base64")}`;
+};
+
+export const decryptLocalSecret = (stored: string | null | undefined): string | null => {
+  if (!stored) {
+    return null;
+  }
+
+  const [prefix, value] = stored.split(":", 2);
+  if (!prefix || !value) {
+    return null;
+  }
+
+  if (prefix === SAFE_STORAGE_PREFIX) {
+    return safeStorage.decryptString(Buffer.from(value, "base64"));
+  }
+
+  if (prefix === BASE64_PREFIX) {
+    return Buffer.from(value, "base64").toString("utf8");
+  }
+
+  return null;
 };

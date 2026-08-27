@@ -27,10 +27,31 @@ export interface PrinterRoleConfig {
 
 export type PrinterRoleConfigs = Record<PrinterRole, PrinterRoleConfig>;
 
+export interface TunnelConfig {
+  autostart: boolean;
+  ngrokDomain: string | null;
+  ngrokAuthTokenSet: boolean;
+}
+
+export type TunnelRuntimeState =
+  | "disabled"
+  | "starting"
+  | "online"
+  | "offline"
+  | "error";
+
+export interface TunnelRuntimeStatus {
+  provider: TunnelProvider;
+  state: TunnelRuntimeState;
+  publicUrl: string | null;
+  message: string | null;
+}
+
 export interface AgentConfig {
   server: ServerConfig;
   remoteAccessUrl: string | null;
   tunnelProvider: TunnelProvider;
+  tunnel: TunnelConfig;
   printerAdapterMode: PrinterAdapterMode;
   printerRoles: PrinterRoleConfigs;
 }
@@ -39,6 +60,9 @@ export interface AgentConfigPatch {
   server?: Partial<ServerConfig>;
   remoteAccessUrl?: string | null;
   tunnelProvider?: TunnelProvider;
+  tunnel?: Partial<Omit<TunnelConfig, "ngrokAuthTokenSet">> & {
+    ngrokAuthToken?: string | null;
+  };
   printerAdapterMode?: PrinterAdapterMode;
   printerRoles?: Partial<Record<PrinterRole, Partial<PrinterRoleConfig>>>;
 }
@@ -137,6 +161,7 @@ export interface AdminState {
   config: AgentConfig;
   health: DetailedAgentHealth;
   printers: SystemPrinter[];
+  tunnel: TunnelRuntimeStatus;
   localUrl: string;
 }
 

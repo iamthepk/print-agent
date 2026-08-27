@@ -11,16 +11,17 @@ import { ConfigurablePrinterAdapter } from "./printers/configurablePrinterAdapte
 import { SimulatedPrinterAdapter } from "./printers/simulatedPrinterAdapter";
 import { WindowsPrinterAdapter } from "./printers/windowsPrinterAdapter";
 import { resolveRuntimePaths } from "./runtimePaths";
+import { NgrokService } from "./tunnel/ngrokService";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
-let adminAuthenticated = false;
 
 let configService: ConfigService;
 let logger: Logger;
 let apiServer: HttpApiServer;
 let printJobService: PrintJobService;
+let ngrokService: NgrokService;
 
 const resolveAssetPath = (fileName: string): string => {
   if (app.isPackaged) {
@@ -93,7 +94,8 @@ const showWindow = (): void => {
 
 const copyRemoteUrl = (): void => {
   const config = configService.getPublicConfig();
-  clipboard.writeText(config.remoteAccessUrl ?? configService.getLocalUrl());
+  const tunnelUrl = ngrokService?.getStatus().publicUrl ?? null;
+  clipboard.writeText(tunnelUrl ?? config.remoteAccessUrl ?? configService.getLocalUrl());
 };
 
 const restartApp = (): void => {
@@ -137,14 +139,9 @@ const getAdminState = async () => {
     config: configService.getPublicConfig(),
     health: await printJobService.getDetailedHealth(),
     printers: await printJobService.getPrinters(),
+    tunnel: ngrokService.getStatus(),
     localUrl: configService.getLocalUrl()
   };
-};
-
-const requireAdmin = (): void => {
-  if (!adminAuthenticated) {
-    throw new Error("Admin PIN is required.");
-  }
 };
 
 const registerIpcHandlers = (): void => {
@@ -152,69 +149,45 @@ const registerIpcHandlers = (): void => {
     agentVersion: AGENT_VERSION,
     protocolVersion: PROTOCOL_VERSION,
     localUrl: configService.getLocalUrl(),
-    setupRequired: configService.isSetupRequired(),
-    authenticated: adminAuthenticated,
-    initialApiToken: null
+    setupRequired: false,
+    authenticated: true,
+    initialApiToken: configService.consumeInitialApiToken()
   }));
 
-  ipcMain.handle("auth:setup-pin", async (_event, pin: string) => {
-    if (!configService.isSetupRequired()) {
-      throw new Error("Admin PIN is already configured.");
-    }
-    await configService.setAdminPin(pin);
-    adminAuthenticated = true;
-    return {
-      authenticated: true,
-      initialApiToken: configService.consumeInitialApiToken()
-    };
-  });
-
-  ipcMain.handle("auth:login", async (_event, pin: string) => {
-    adminAuthenticated = configService.verifyAdminPin(pin);
-    if (!adminAuthenticated) {
-      throw new Error("Invalid admin PIN.");
-    }
-    return {
-      authenticated: true
-    };
-  });
-
-  ipcMain.handle("auth:logout", () => {
-    adminAuthenticated = false;
-    return {
-      authenticated: false
-    };
-  });
-
   ipcMain.handle("admin:get-state", async () => {
-    requireAdmin();
     return getAdminState();
   });
 
   ipcMain.handle("config:save", async (_event, patch: AgentConfigPatch) => {
-    requireAdmin();
     await configService.patch(patch);
+    await ngrokService.reconcile();
+    return getAdminState();
+  });
+
+  ipcMain.handle("tunnel:start", async () => {
+    await ngrokService.start(true);
+    return getAdminState();
+  });
+
+  ipcMain.handle("tunnel:stop", async () => {
+    await ngrokService.stop();
     return getAdminState();
   });
 
   ipcMain.handle("test:run", async (_event, role: PrinterRole) => {
-    requireAdmin();
     return printJobService.runTest(role);
   });
 
   ipcMain.handle("token:regenerate", async () => {
-    requireAdmin();
     return configService.regenerateApiToken();
   });
 
   ipcMain.handle("clipboard:copy-url", () => {
-    requireAdmin();
     copyRemoteUrl();
     return true;
   });
 
   ipcMain.handle("logs:export", async () => {
-    requireAdmin();
     const result = await dialog.showSaveDialog({
       title: "Export Print Agent Log",
       defaultPath: `print-agent-${new Date().toISOString().slice(0, 10)}.log`,
@@ -233,13 +206,11 @@ const registerIpcHandlers = (): void => {
   });
 
   ipcMain.handle("app:restart", () => {
-    requireAdmin();
     restartApp();
     return true;
   });
 
   ipcMain.handle("app:quit", () => {
-    requireAdmin();
     isQuitting = true;
     app.quit();
     return true;
@@ -270,6 +241,8 @@ const bootstrap = async (): Promise<void> => {
   printJobService = new PrintJobService(configService, adapter, dedupeStore, logger);
   apiServer = new HttpApiServer(configService, printJobService, logger);
   await apiServer.start();
+  ngrokService = new NgrokService(configService, logger);
+  await ngrokService.reconcile();
 
   registerIpcHandlers();
   createTray();
@@ -281,7 +254,7 @@ const bootstrap = async (): Promise<void> => {
     });
   }
 
-  const showOnCreate = configService.isSetupRequired() || !app.isPackaged;
+  const showOnCreate = configService.hasInitialApiToken() || !app.isPackaged;
   await createWindow(showOnCreate);
 };
 
@@ -292,6 +265,7 @@ if (!gotLock) {
   app.on("second-instance", showWindow);
   app.on("before-quit", () => {
     isQuitting = true;
+    void ngrokService?.stop("Print Agent is quitting.");
   });
 
   app.on("window-all-closed", () => {

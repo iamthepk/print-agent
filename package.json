@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Windows desktop print agent with local admin UI and HTTP print API.",
   "author": "Print Agent Team",
+  "license": "MIT",
   "private": true,
   "type": "commonjs",
   "main": "dist/main/main.js",
@@ -12,8 +13,11 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build --base ./ --outDir dist/renderer --emptyOutDir",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "prepare:installer-packages": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-installer-packages.ps1",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder"
+    "pack:offline": "npm run prepare:installer-packages && npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:offline": "npm run prepare:installer-packages && npm run build && electron-builder"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
