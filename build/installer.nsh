@@ -32,8 +32,20 @@
 !macroend
 
 !macro customUnInstall
-  SetDetailsPrint both
-  DetailPrint "Removing Print Agent local configuration and runtime data..."
+  ClearErrors
+  ${GetParameters} $R0
+  ${GetOptions} $R0 "--updated" $R1
+  ${If} ${Errors}
+    ClearErrors
+    ${GetOptions} $R0 "/KEEP_APP_DATA" $R1
+  ${EndIf}
+
+  ${IfNot} ${Errors}
+    SetDetailsPrint both
+    DetailPrint "Preserving Print Agent local configuration and runtime data during upgrade."
+  ${Else}
+    SetDetailsPrint both
+    DetailPrint "Removing Print Agent local configuration and runtime data..."
 
   ${If} ${FileExists} "$INSTDIR\resources\installer\uninstall-cleanup.ps1"
     nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\installer\uninstall-cleanup.ps1"'
@@ -80,5 +92,6 @@
   ${If} ${FileExists} "$LOCALAPPDATA\Print Agent"
     DetailPrint "Removing $LOCALAPPDATA\Print Agent"
     RMDir /r "$LOCALAPPDATA\Print Agent"
+  ${EndIf}
   ${EndIf}
 !macroend
