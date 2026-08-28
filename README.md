@@ -10,6 +10,7 @@ the browser print dialog.
 ## Features
 
 - Electron desktop app with tray integration and a local admin UI.
+- Windows login starts the agent hidden in the tray; a manual launch opens the admin UI.
 - Windows NSIS installer built with `electron-builder`.
 - Token-protected HTTP API for POS integrations.
 - One-time API token reveal, token regeneration, and local token hashing.

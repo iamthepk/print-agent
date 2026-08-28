@@ -23,6 +23,10 @@ let apiServer: HttpApiServer;
 let printJobService: PrintJobService;
 let ngrokService: NgrokService;
 
+const START_HIDDEN_ARG = "--hidden";
+
+const isHiddenStart = (args = process.argv): boolean => args.includes(START_HIDDEN_ARG);
+
 const resolveAssetPath = (fileName: string): string => {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "assets", fileName);
@@ -250,11 +254,14 @@ const bootstrap = async (): Promise<void> => {
   if (process.platform === "win32" && app.isPackaged) {
     app.setLoginItemSettings({
       openAtLogin: true,
-      path: process.execPath
+      path: process.execPath,
+      args: [START_HIDDEN_ARG]
     });
   }
 
-  const showOnCreate = configService.hasInitialApiToken() || !app.isPackaged;
+  const showOnCreate = configService.hasInitialApiToken()
+    || !app.isPackaged
+    || !isHiddenStart();
   await createWindow(showOnCreate);
 };
 
@@ -262,7 +269,11 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", showWindow);
+  app.on("second-instance", (_event, argv) => {
+    if (!isHiddenStart(argv)) {
+      showWindow();
+    }
+  });
   app.on("before-quit", () => {
     isQuitting = true;
     void ngrokService?.stop("Print Agent is quitting.");
