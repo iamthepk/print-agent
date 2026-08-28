@@ -7,6 +7,15 @@ exposes a small token-protected HTTP API. A browser-based POS can use that API
 to print receipts, kitchen labels, and cash drawer pulses without relying on
 the browser print dialog.
 
+## Project Status
+
+`main` contains Print Agent v2: the maintained desktop app and Windows
+installer.
+
+The original Print Agent v1 implementation is preserved only as sanitized
+legacy history on the `legacy/v1-history` branch. V1 used a Node-based server
+and an external ngrok startup script; new deployments should use v2.
+
 ## Features
 
 - Electron desktop app with tray integration and a local admin UI.
