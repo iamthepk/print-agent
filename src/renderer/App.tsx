@@ -93,6 +93,8 @@ const TUNNEL_STATE_LABELS = {
   error: "Error"
 } as const;
 
+const STATE_REFRESH_INTERVAL_MS = 10_000;
+
 export function App() {
   const [bootstrap, setBootstrap] = useState<AdminBootstrap | null>(null);
   const [state, setState] = useState<AdminState | null>(null);
@@ -115,6 +117,22 @@ export function App() {
   useEffect(() => {
     void loadBootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!bootstrap) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      if (busy || dirty || draft?.tunnelProvider !== "ngrok") {
+        return;
+      }
+
+      void loadState().catch(() => undefined);
+    }, STATE_REFRESH_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [bootstrap, busy, dirty, draft?.tunnelProvider]);
 
   const loadBootstrap = async () => {
     try {

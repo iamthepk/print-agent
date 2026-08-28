@@ -56,6 +56,18 @@ function Get-ExistingExecutable {
 function Get-ExecutableVersion {
   param([Parameter(Mandatory = $true)][string]$Path)
 
+  if ([System.IO.Path]::GetFileName($Path).Equals("ngrok.exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+    try {
+      $output = & $Path version 2>$null
+      $match = [regex]::Match(($output -join "`n"), "\d+(\.\d+){0,3}")
+      if ($match.Success) {
+        return $match.Value
+      }
+    } catch {
+      return $null
+    }
+  }
+
   try {
     $version = (Get-Item -LiteralPath $Path).VersionInfo.ProductVersion
     if ([string]::IsNullOrWhiteSpace($version)) {
@@ -94,6 +106,7 @@ function Get-BundledPackageVersion {
     return $null
   }
 
+  $versions = @()
   $yamlFiles = Get-ChildItem -LiteralPath $packageDir -Filter "*.yaml" -File -ErrorAction SilentlyContinue
   foreach ($yamlFile in $yamlFiles) {
     $content = Get-Content -LiteralPath $yamlFile.FullName -Raw
@@ -103,11 +116,17 @@ function Get-BundledPackageVersion {
 
     $versionMatch = [regex]::Match($content, "(?m)^PackageVersion:\s*(.+?)\s*$")
     if ($versionMatch.Success) {
-      return $versionMatch.Groups[1].Value.Trim()
+      $version = $versionMatch.Groups[1].Value.Trim()
+      $versions += [pscustomobject]@{
+        Raw = $version
+        Comparable = Convert-ToComparableVersion -Value $version
+      }
     }
   }
 
-  return $null
+  return $versions |
+    Sort-Object -Property @{ Expression = { if ($null -eq $_.Comparable) { [version]"0.0.0.0" } else { $_.Comparable } } } -Descending |
+    Select-Object -First 1 -ExpandProperty Raw
 }
 
 function Get-WingetPath {
@@ -435,12 +454,13 @@ $ngrokReady = Ensure-WingetPackage `
   -DisplayName "ngrok" `
   -PackageId "Ngrok.Ngrok" `
   -ExecutableCandidates @(
-    (Join-Path $vendorDir "ngrok\ngrok.exe"),
+    "C:\ngrok\ngrok.exe",
     "ngrok.exe",
     "%ProgramFiles%\ngrok\ngrok.exe",
     "%ProgramFiles(x86)%\ngrok\ngrok.exe",
     "%LOCALAPPDATA%\ngrok\ngrok.exe",
-    "%LOCALAPPDATA%\Microsoft\WinGet\Links\ngrok.exe"
+    "%LOCALAPPDATA%\Microsoft\WinGet\Links\ngrok.exe",
+    (Join-Path $vendorDir "ngrok\ngrok.exe")
   ) `
   -BundledPatterns @("ngrok*.exe") `
   -BundledSilentArguments @() `
