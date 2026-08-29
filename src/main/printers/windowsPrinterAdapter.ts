@@ -14,6 +14,9 @@ import { generateReceiptPdf } from "../templates/receiptPdfTemplate";
 import type { AdapterOperationResult, AdapterPrintRequest, PrinterAdapter } from "./printerAdapter";
 
 const execFileAsync = promisify(execFile);
+const EXTERNAL_PRINT_SETTLE_DELAY_MS = 1500;
+const MAX_DOCUMENT_NAME_LENGTH = 180;
+const TEMP_PRINT_FILE_DELETE_DELAY_MS = 60 * 1000;
 
 const RAW_PRINTER_SCRIPT = `
 param(
@@ -576,6 +579,7 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
           windowsHide: true,
           maxBuffer: 1024 * 1024
         });
+        await this.sleep(EXTERNAL_PRINT_SETTLE_DELAY_MS);
       }
 
       this.logger.info("Printed kitchen label through IrfanView image path", {
@@ -583,7 +587,8 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
         printerName: request.printerName,
         imagePath,
         copies,
-        irfanViewPath
+        irfanViewPath,
+        jobId: request.jobId
       });
 
       return {
@@ -605,7 +610,7 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
       if (imagePath) {
         setTimeout(() => {
           void fs.unlink(imagePath as string).catch(() => undefined);
-        }, 5000);
+        }, TEMP_PRINT_FILE_DELETE_DELAY_MS);
       }
     }
   }
@@ -826,6 +831,7 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
           windowsHide: true,
           maxBuffer: 1024 * 1024
         });
+        await this.sleep(EXTERNAL_PRINT_SETTLE_DELAY_MS);
       }
 
       this.logger.info("Printed receipt through SumatraPDF", {
@@ -833,7 +839,8 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
         printerName: request.printerName,
         pdfPath,
         sumatraPath,
-        copies
+        copies,
+        jobId: request.jobId
       });
 
       return {
@@ -855,7 +862,7 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
       if (pdfPath) {
         setTimeout(() => {
           void fs.unlink(pdfPath as string).catch(() => undefined);
-        }, 5000);
+        }, TEMP_PRINT_FILE_DELETE_DELAY_MS);
       }
     }
   }
@@ -895,7 +902,10 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
   private async openDrawerRawFallback(printerName: string): Promise<AdapterOperationResult> {
     const result = await this.sendRawBytes(
       printerName,
-      Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]),
+      Buffer.concat([
+        Buffer.from([0x1b, 0x70, 0x00, 0x32, 0x32]),
+        Buffer.from([0x1b, 0x70, 0x01, 0x32, 0x32])
+      ]),
       "Print Agent drawer pulse"
     );
 
@@ -997,7 +1007,16 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
 
   private getDocumentName(request: AdapterPrintRequest): string {
     const templateName = request.templateId || `${request.role}.default`;
-    return `Print Agent ${request.role} ${templateName}`;
+    const jobPart = request.jobId ? ` ${request.jobId}` : "";
+    return this.truncateDocumentName(`Print Agent ${request.role} ${templateName}${jobPart}`);
+  }
+
+  private truncateDocumentName(documentName: string): string {
+    if (documentName.length <= MAX_DOCUMENT_NAME_LENGTH) {
+      return documentName;
+    }
+
+    return documentName.slice(0, MAX_DOCUMENT_NAME_LENGTH - 1).trimEnd();
   }
 
   private getDriverLayoutMode(request: AdapterPrintRequest): string {
@@ -1084,5 +1103,11 @@ export class WindowsPrinterAdapter implements PrinterAdapter {
     }
 
     return null;
+  }
+
+  private async sleep(milliseconds: number): Promise<void> {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, milliseconds);
+    });
   }
 }

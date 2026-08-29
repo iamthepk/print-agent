@@ -6,11 +6,13 @@ import type { RuntimePaths } from "../runtimePaths";
 
 interface DedupeRecord {
   jobId: string;
+  requestFingerprint: string | null;
   processedAt: string;
   response: PrintJobResponse;
 }
 
 const DEDUPE_TTL_MS = 24 * 60 * 60 * 1000;
+const LEGACY_FINGERPRINT = "legacy";
 
 export class DedupeStore {
   private readonly filePath: string;
@@ -30,7 +32,14 @@ export class DedupeStore {
       if (Array.isArray(parsed)) {
         for (const record of parsed) {
           if (this.isRecord(record)) {
-            this.records.set(record.jobId, record);
+            const requestFingerprint = record.requestFingerprint ?? LEGACY_FINGERPRINT;
+            this.records.set(
+              this.recordKey(record.jobId, requestFingerprint),
+              {
+                ...record,
+                requestFingerprint
+              }
+            );
           }
         }
       }
@@ -44,8 +53,8 @@ export class DedupeStore {
     }
   }
 
-  get(jobId: string): PrintJobResponse | null {
-    const record = this.records.get(jobId);
+  get(jobId: string, requestFingerprint: string): PrintJobResponse | null {
+    const record = this.records.get(this.recordKey(jobId, requestFingerprint));
     if (!record) {
       return null;
     }
@@ -56,9 +65,18 @@ export class DedupeStore {
     };
   }
 
-  async remember(jobId: string, response: PrintJobResponse): Promise<void> {
-    this.records.set(jobId, {
+  hasJobId(jobId: string): boolean {
+    return [...this.records.values()].some((record) => record.jobId === jobId);
+  }
+
+  async remember(
+    jobId: string,
+    requestFingerprint: string,
+    response: PrintJobResponse
+  ): Promise<void> {
+    this.records.set(this.recordKey(jobId, requestFingerprint), {
       jobId,
+      requestFingerprint,
       processedAt: new Date().toISOString(),
       response
     });
@@ -68,9 +86,9 @@ export class DedupeStore {
 
   private async cleanup(): Promise<void> {
     const now = Date.now();
-    for (const [jobId, record] of this.records) {
+    for (const [key, record] of this.records) {
       if (now - new Date(record.processedAt).getTime() > DEDUPE_TTL_MS) {
-        this.records.delete(jobId);
+        this.records.delete(key);
       }
     }
   }
@@ -89,8 +107,17 @@ export class DedupeStore {
 
     const record = value as Partial<DedupeRecord>;
     return typeof record.jobId === "string"
+      && (
+        typeof record.requestFingerprint === "string"
+        || record.requestFingerprint === null
+        || record.requestFingerprint === undefined
+      )
       && typeof record.processedAt === "string"
       && typeof record.response === "object"
       && record.response !== null;
+  }
+
+  private recordKey(jobId: string, requestFingerprint: string): string {
+    return `${jobId}\u0000${requestFingerprint}`;
   }
 }

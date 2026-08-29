@@ -1,6 +1,7 @@
 import type { PrinterRole, ReceiptPrintMode, SystemPrinter } from "../../shared/protocol";
 
 export interface AdapterPrintRequest {
+  jobId?: string;
   role: PrinterRole;
   printerName: string;
   paperName?: string | null;

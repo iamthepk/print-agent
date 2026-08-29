@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   DetailedAgentHealth,
   PrintJobRequest,
@@ -15,6 +16,9 @@ import type { Logger } from "./logging/logger";
 import type { PrinterAdapter } from "./printers/printerAdapter";
 
 export class PrintJobService {
+  private readonly inFlightJobs = new Map<string, Promise<PrintJobResponse>>();
+  private readonly printerQueues = new Map<string, Promise<void>>();
+
   constructor(
     private readonly configService: ConfigService,
     private readonly adapter: PrinterAdapter,
@@ -77,12 +81,59 @@ export class PrintJobService {
       };
     }
 
-    const existing = this.dedupeStore.get(request.jobId);
+    const requestFingerprint = this.createRequestFingerprint(request);
+    const taskRoles = request.tasks.map((task) => task.role);
+    const existing = this.dedupeStore.get(request.jobId, requestFingerprint);
     if (existing) {
-      this.logger.info("Duplicate print job suppressed", { jobId: request.jobId });
+      this.logger.info("Duplicate print job suppressed", {
+        jobId: request.jobId,
+        requestFingerprint,
+        taskRoles
+      });
       return existing;
     }
 
+    if (this.dedupeStore.hasJobId(request.jobId)) {
+      this.logger.warn("Print job id reused with different request payload", {
+        jobId: request.jobId,
+        requestFingerprint,
+        taskRoles
+      });
+    }
+
+    const inFlightKey = this.inFlightJobKey(request.jobId, requestFingerprint);
+    const inFlight = this.inFlightJobs.get(inFlightKey);
+    if (inFlight) {
+      this.logger.info("Duplicate in-flight print job joined", {
+        jobId: request.jobId,
+        requestFingerprint,
+        taskRoles
+      });
+      return this.markAlreadyProcessed(await inFlight);
+    }
+
+    this.logger.info("Print job accepted", {
+      jobId: request.jobId,
+      requestFingerprint,
+      taskRoles
+    });
+
+    const processing = this.processNewJob(request, requestFingerprint);
+    this.inFlightJobs.set(inFlightKey, processing);
+
+    try {
+      return await processing;
+    } finally {
+      if (this.inFlightJobs.get(inFlightKey) === processing) {
+        this.inFlightJobs.delete(inFlightKey);
+      }
+    }
+  }
+
+  private async processNewJob(
+    request: PrintJobRequest,
+    requestFingerprint: string
+  ): Promise<PrintJobResponse> {
     const results: PrintOperationResult[] = [];
 
     for (const task of request.tasks) {
@@ -102,7 +153,9 @@ export class PrintJobService {
       }
 
       if (role === "cash_drawer") {
-        const result = await this.adapter.openDrawer(printerName);
+        const result = await this.runForPrinter(printerName, () => {
+          return this.adapter.openDrawer(printerName);
+        });
         results.push({
           role,
           status: result.ok ? "opened" : "failed",
@@ -113,14 +166,17 @@ export class PrintJobService {
         continue;
       }
 
-      const result = await this.adapter.print({
-        role,
-        printerName,
-        paperName: roleConfig.paperName ?? null,
-        templateId: task.templateId ?? `${role}.default`,
-        copies: Math.max(1, Math.min(10, task.copies ?? 1)),
-        payload: task.payload,
-        receiptPrintMode: role === "receipt" ? roleConfig.receiptPrintMode ?? "pdf" : undefined
+      const result = await this.runForPrinter(printerName, () => {
+        return this.adapter.print({
+          jobId: request.jobId,
+          role,
+          printerName,
+          paperName: roleConfig.paperName ?? null,
+          templateId: task.templateId ?? `${role}.default`,
+          copies: Math.max(1, Math.min(10, task.copies ?? 1)),
+          payload: task.payload,
+          receiptPrintMode: role === "receipt" ? roleConfig.receiptPrintMode ?? "pdf" : undefined
+        });
       });
 
       results.push({
@@ -138,7 +194,7 @@ export class PrintJobService {
       results
     };
 
-    await this.dedupeStore.remember(request.jobId, response);
+    await this.dedupeStore.remember(request.jobId, requestFingerprint, response);
     return response;
   }
 
@@ -317,5 +373,78 @@ export class PrintJobService {
     }
 
     return null;
+  }
+
+  private async runForPrinter<T>(
+    printerName: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    const queueKey = this.normalizePrinterQueueKey(printerName);
+    const previous = this.printerQueues.get(queueKey) ?? Promise.resolve();
+    let releaseCurrent!: () => void;
+    const current = new Promise<void>((resolve) => {
+      releaseCurrent = resolve;
+    });
+    const queued = previous.catch(() => undefined).then(() => current);
+    this.printerQueues.set(queueKey, queued);
+
+    await previous.catch(() => undefined);
+
+    try {
+      return await operation();
+    } finally {
+      releaseCurrent();
+      if (this.printerQueues.get(queueKey) === queued) {
+        this.printerQueues.delete(queueKey);
+      }
+    }
+  }
+
+  private normalizePrinterQueueKey(printerName: string): string {
+    return printerName.trim().toLocaleLowerCase();
+  }
+
+  private createRequestFingerprint(request: PrintJobRequest): string {
+    const normalizedTasks = request.tasks.map((task) => ({
+      role: task.role,
+      templateId: task.templateId ?? null,
+      copies: Math.max(1, Math.min(10, task.copies ?? 1)),
+      payload: task.payload
+    }));
+    return createHash("sha256")
+      .update(this.stableStringify(normalizedTasks))
+      .digest("hex");
+  }
+
+  private stableStringify(value: unknown): string {
+    if (value === undefined) {
+      return "null";
+    }
+
+    if (value === null || typeof value !== "object") {
+      return JSON.stringify(value) ?? "null";
+    }
+
+    if (Array.isArray(value)) {
+      return `[${value.map((item) => this.stableStringify(item)).join(",")}]`;
+    }
+
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+    return `{${entries.map(([key, entryValue]) => {
+      return `${JSON.stringify(key)}:${this.stableStringify(entryValue)}`;
+    }).join(",")}}`;
+  }
+
+  private inFlightJobKey(jobId: string, requestFingerprint: string): string {
+    return `${jobId}\u0000${requestFingerprint}`;
+  }
+
+  private markAlreadyProcessed(response: PrintJobResponse): PrintJobResponse {
+    return {
+      ...response,
+      status: "already_processed"
+    };
   }
 }
