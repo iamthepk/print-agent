@@ -167,7 +167,13 @@ Example request body:
 
 ## Deduplication
 
-Print Agent deduplicates automatic jobs by `jobId` for roughly 24 hours.
+Print Agent deduplicates automatic jobs by `jobId` plus normalized request
+content for roughly 24 hours.
+
+An exact retry of the same job returns `already_processed`. If the POS reuses a
+`jobId` for a different operation, such as sending a receipt in one request and
+a cash drawer pulse in another, Print Agent accepts the distinct request for
+compatibility and logs an integration warning.
 
 If the response status is `already_processed`, do not retry automatically and
 do not show it as a failure.
@@ -222,8 +228,10 @@ async function sendPrintAgentJob(baseUrl: string, token: string, job: unknown) {
 - Test kitchen label prints on the configured kitchen printer.
 - Test cash drawer opens the configured drawer.
 - A cash order opens the drawer exactly once.
-- Duplicate automatic order submission with the same `jobId` returns
-  `already_processed` and does not reprint.
+- Duplicate automatic order submission with the same `jobId` and same payload
+  returns `already_processed` and does not reprint.
+- Reusing a `jobId` with different tasks or payload is logged as an integration
+  warning.
 - Manual reprint uses a fresh `jobId`.
 - POS checkout still completes when Print Agent is offline.
 - API token is not logged and is not synced to shared backend storage.

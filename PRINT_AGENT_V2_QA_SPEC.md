@@ -220,8 +220,9 @@ Cil deduplikace je ochrana proti dvojkliku, retry a duplicitnimu requestu. Neni 
 Pravidla:
 
 - Kazdy automaticky print job ma stabilni `jobId`.
-- Stejny `jobId` agent zpracuje jen jednou.
-- Pokud POS posle stejny `jobId` znovu, agent vrati stav typu `already_processed`.
+- Stejny `jobId` se stejnym normalizovanym obsahem agent zpracuje jen jednou.
+- Pokud POS posle stejny `jobId` a stejny obsah znovu, agent vrati stav typu `already_processed`.
+- Pokud POS pouzije stejny `jobId` pro jinou operaci nebo payload, agent ji kvuli kompatibilite zpracuje a zaloguje integracni warning.
 - Rucni reprint ma vzdy novy `jobId`, aby se vytiskl znovu.
 - Uprava polozky ma novy `jobId`, protoze jde o novou verzi kitchen tisku.
 - Multi-device concurrent POS neni v prvni verzi podporovany.

@@ -27,7 +27,7 @@ and an external ngrok startup script; new deployments should use v2.
 - Receipt printing through SumatraPDF/PDF or POS/ESC raw mode.
 - Kitchen label printing through image/PDF and Windows printer fallback paths.
 - Cash drawer pulse through the configured receipt/drawer printer.
-- 24-hour local dedupe by `jobId`.
+- 24-hour local dedupe by `jobId` and normalized print request content.
 - Windows printer discovery through PowerShell.
 - Optional ngrok tunnel management from the admin UI.
 - Installer prerequisite bootstrap for SumatraPDF, IrfanView, and ngrok.
@@ -210,8 +210,10 @@ Invoke-RestMethod `
   -Body $body
 ```
 
-Run the last request a second time with the same `jobId`; it should return
-`already_processed`. Change `jobId` for a manual reprint.
+Run the last request a second time without changing the body; it should return
+`already_processed`. A reused `jobId` with different tasks or payload is
+processed as a distinct request and logged as an integration warning. Change
+`jobId` for a manual reprint.
 
 Switch `Printer backend` back to `Windows` for real printer output.
 
@@ -286,8 +288,10 @@ Example print job:
 }
 ```
 
-Repeated automatic requests with the same `jobId` return `already_processed`.
-Manual reprints should use a fresh `jobId`.
+Repeated automatic requests with the same `jobId` and the same task payload
+return `already_processed`. Reusing a `jobId` with different tasks or payload is
+accepted for compatibility but logged as an integration warning. Manual
+reprints should use a fresh `jobId`.
 
 ## POS Integration
 
