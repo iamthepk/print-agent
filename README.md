@@ -85,6 +85,18 @@ The app is intended to be distributed as a Windows installer. Customer/register
 PCs do not need Node.js, npm, a cloned repository, or source files after
 installation.
 
+The installer also checks and prepares the external tools used by Print Agent:
+
+- SumatraPDF for PDF receipt printing and PDF fallback output.
+- IrfanView for image-based kitchen label printing.
+- ngrok for optional HTTPS remote access from a cloud or web POS.
+
+If these tools are already present, the installer keeps or updates the existing
+installation. If they are missing, it installs them from approved bundled
+packages or from Windows Package Manager. Printer drivers are not bundled; they
+must be installed separately for the specific receipt, label, or cash drawer
+hardware at each location.
+
 The installer can prepare runtime prerequisites in two modes:
 
 1. Fully bundled: put approved SumatraPDF, IrfanView, and ngrok offline

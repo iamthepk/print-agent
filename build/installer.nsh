@@ -1,3 +1,9 @@
+!macro customWelcomePage
+  !define MUI_WELCOMEPAGE_TITLE "Install Print Agent"
+  !define MUI_WELCOMEPAGE_TEXT "This setup installs Print Agent and prepares supporting tools used for local printing and optional POS remote access.$\r$\n$\r$\nIt may install or update SumatraPDF, IrfanView, and ngrok if they are missing or outdated.$\r$\n$\r$\nPrinter drivers are not included. Install the required printer drivers for the connected hardware."
+  !insertmacro MUI_PAGE_WELCOME
+!macroend
+
 !macro customHeader
   ShowInstDetails show
   ShowUninstDetails show
@@ -8,7 +14,9 @@
     SetDetailsPrint both
     DetailPrint "Print Agent application files installed."
     DetailPrint "Checking Print Agent runtime prerequisites..."
-    DetailPrint "Checking: SumatraPDF, IrfanView, ngrok, WinSpoolerHelper slot."
+    DetailPrint "May install or update: SumatraPDF, IrfanView, and ngrok."
+    DetailPrint "Printer drivers are not bundled and must be installed separately for the target hardware."
+    DetailPrint "Checking WinSpoolerHelper support and external tool availability..."
     nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\resources\installer\install-prerequisites.ps1"'
     Pop $0
 
