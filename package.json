@@ -1,6 +1,6 @@
 {
   "name": "print-agent-desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Windows desktop print agent with local admin UI and HTTP print API.",
   "author": "Print Agent Team",
   "license": "MIT",

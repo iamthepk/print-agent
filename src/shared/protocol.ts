@@ -1,4 +1,4 @@
-export const AGENT_VERSION = "1.0.2";
+export const AGENT_VERSION = "1.0.3";
 export const PROTOCOL_VERSION = "1";
 
 export const PRINTER_ROLES = ["receipt", "kitchen", "cash_drawer"] as const;

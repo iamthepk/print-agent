@@ -11,6 +11,7 @@ import { ConfigurablePrinterAdapter } from "./printers/configurablePrinterAdapte
 import { SimulatedPrinterAdapter } from "./printers/simulatedPrinterAdapter";
 import { WindowsPrinterAdapter } from "./printers/windowsPrinterAdapter";
 import { resolveRuntimePaths } from "./runtimePaths";
+import { ensureWindowsStartupRegistration } from "./startup/startupService";
 import { NgrokService } from "./tunnel/ngrokService";
 
 let mainWindow: BrowserWindow | null = null;
@@ -251,12 +252,8 @@ const bootstrap = async (): Promise<void> => {
   registerIpcHandlers();
   createTray();
 
-  if (process.platform === "win32" && app.isPackaged) {
-    app.setLoginItemSettings({
-      openAtLogin: true,
-      path: process.execPath,
-      args: [START_HIDDEN_ARG]
-    });
+  if (app.isPackaged) {
+    await ensureWindowsStartupRegistration(START_HIDDEN_ARG, logger);
   }
 
   const showOnCreate = configService.hasInitialApiToken()

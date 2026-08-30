@@ -43,7 +43,46 @@ function Remove-TargetDirectory {
   }
 }
 
+function Remove-StartupRegistration {
+  Write-Info "Removing Print Agent startup registrations."
+
+  try {
+    & schtasks.exe /Delete /TN "Print Agent" /F *> $null
+  } catch {
+    Write-Warn "Could not remove Print Agent scheduled task: $($_.Exception.Message)"
+  }
+
+  $runValueNames = @(
+    "PrintAgent",
+    "app.printagent.desktop",
+    "electron.app.Print Agent",
+    "electron.app.Lootea Print Agent",
+    "Print Agent"
+  )
+  $runKeys = @(
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+  )
+
+  foreach ($runKey in $runKeys) {
+    if (-not (Test-Path -LiteralPath $runKey)) {
+      continue
+    }
+
+    foreach ($valueName in $runValueNames) {
+      try {
+        Remove-ItemProperty -LiteralPath $runKey -Name $valueName -Force -ErrorAction SilentlyContinue
+      } catch {
+        Write-Warn "Could not remove startup registry value '$valueName' from '$runKey': $($_.Exception.Message)"
+      }
+    }
+  }
+}
+
 Write-Info "Starting Print Agent uninstall cleanup."
+Remove-StartupRegistration
 
 $targets = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
