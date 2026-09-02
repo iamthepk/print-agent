@@ -9,12 +9,12 @@ the browser print dialog.
 
 ## Project Status
 
-`main` contains Print Agent v2: the maintained desktop app and Windows
-installer.
+`main` contains the maintained Print Agent desktop app and Windows installer.
 
 The original Print Agent v1 implementation is preserved only as sanitized
 legacy history on the `legacy/v1-history` branch. V1 used a Node-based server
-and an external ngrok startup script; new deployments should use v2.
+and an external ngrok startup script; new deployments should use this maintained
+desktop app.
 
 ## Features
 
