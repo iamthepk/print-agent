@@ -1,68 +1,68 @@
 # Print Agent v2 QA Specification
 
-Datum: 2026-08-25
+Date: 2026-08-25
 
-Tento dokument zachycuje produktove a technicke rozhodnuti z QA pro novou verzi Print Agenta. Slouzi jako specifikace pro implementaci v samostatnem repozitari `print-agent-v2`.
+This document captures the product and technical decisions from QA for the new version of Print Agent. It serves as the implementation specification for the standalone `print-agent-v2` repository.
 
-## Cil
+## Goal
 
-Vytvorit Windows-only Print Agent jako samostatnou aplikaci s installerem, vlastnim admin UI, vyberem tiskaren podle roli a bez zavislosti na source code checkoutu.
+Create a Windows-only Print Agent as a standalone application with an installer, its own admin UI, printer selection by role, and no dependency on a source code checkout.
 
-POS a Print Agent budou dlouhodobe jeden produktovy ekosystem, ale instalace zustane oddelena:
+POS and Print Agent will remain part of one product ecosystem long term, but their installation will stay separate:
 
-- POS bezi jako webova aplikace.
-- Print Agent se instaluje jen na Windows PC, ktere ma pristup k tiskarnam a pokladni zasuvce.
-- POS ma v nastaveni odkaz na hotovy instalator Print Agenta.
+- POS runs as a web application.
+- Print Agent is installed only on a Windows PC that has access to the printers and cash drawer.
+- POS settings include a link to the finished Print Agent installer.
 
-## Zakladni Rozhodnuti
+## Core Decisions
 
-- Print Agent v2 bude vyvijen v samostatnem repozitari/vetvi, aby se neporusila soucasna funkcni verze.
-- Prvni verze je pouze pro Windows.
-- Print Agent bude samostatna aplikace s instalatorem.
-- Print Agent bude mit vlastni lokalni admin UI panel.
-- POS nebude umet tisknout pres browser print dialog.
-- POS bude tisknout pouze pres Print Agent, nebo nebude tisknout vubec.
-- Tiskarny se nastavuji v Print Agent UI, ne v POS.
-- POS muze jen zapnout/vypnout, co chce tisknout, a cist stav agenta.
+- Print Agent v2 will be developed in a separate repository/branch so the current working version is not broken.
+- The first version is Windows-only.
+- Print Agent will be a standalone application with an installer.
+- Print Agent will have its own local admin UI panel.
+- POS will not support printing through the browser print dialog.
+- POS will print only through Print Agent, or it will not print at all.
+- Printers are configured in the Print Agent UI, not in POS.
+- POS can only enable/disable what it wants to print and read the agent status.
 
-## Profesionalni Produktovy Smer
+## Professional Product Direction
 
-Print Agent v2 ma pusobit jako normalni produktova desktop aplikace, ne jako sada volne polozenych skriptu.
+Print Agent v2 should feel like a normal desktop product application, not like a loose collection of scripts.
 
-Doporuceny stack pro prvni verzi:
+Recommended stack for the first version:
 
 - Electron desktop shell,
-- TypeScript v celem projektu,
-- React/Vite admin UI uvnitr Electron rendereru,
-- Node HTTP API ve vnitrni aplikacni vrstve,
-- Windows printer adapter izolovany za rozhranim,
-- electron-builder NSIS installer pro `.exe` instalaci.
+- TypeScript across the whole project,
+- React/Vite admin UI inside the Electron renderer,
+- Node HTTP API in the internal application layer,
+- Windows printer adapter isolated behind an interface,
+- electron-builder NSIS installer for `.exe` installation.
 
-Produktove zasady:
+Product principles:
 
-- uzivatel nespousti `.bat`, `.vbs`, `.ps1` ani terminal,
-- produkcni aplikace bezi bez viditelne konzole,
-- tray ikona je hlavni vstup do UI a rychly status,
-- build/dev skripty mohou existovat, ale nejsou soucast uzivatelskeho flow,
-- konfigurace, logy a runtime data jsou mimo repo/source checkout,
-- app ma jasny nazev, verzi, diagnostiku, log export a citelne chybove stavy,
-- Windows-specific tisk je v samostatnem adapteru, aby pozdeji slo pridat macOS/CUPS nebo jiny backend,
-- installer a tray UI maji byt prvni trida produktu, ne dodatecna vrstva.
+- the user does not run `.bat`, `.vbs`, `.ps1`, or a terminal,
+- the production application runs without a visible console,
+- the tray icon is the main entry point into the UI and quick status,
+- build/dev scripts may exist, but they are not part of the user flow,
+- configuration, logs, and runtime data live outside the repository/source checkout,
+- the app has a clear name, version, diagnostics, log export, and readable error states,
+- Windows-specific printing is in a separate adapter so macOS/CUPS or another backend can be added later,
+- the installer and tray UI should be first-class parts of the product, not an afterthought.
 
-## Cilovy Runtime Model
+## Target Runtime Model
 
-Soucasny stav neni skutecna Windows Service. Dnes se agent spousti pres zkratku ve Windows Startup, ktera vola VBS a `start.bat`.
+The current state is not a real Windows Service. Today the agent starts through a Windows Startup shortcut that calls VBS and `start.bat`.
 
-Pro v2:
+For v2:
 
-- Agent bezi silent na pozadi.
-- Agent se spousti po prihlaseni uzivatele do Windows pres desktop runtime autostart.
-- Agent ma ikonu v tray liste.
-- Agent se pri padu automaticky restartuje.
-- Windows Service se zatim nedela jako default, protoze tiskarny, tray UI a driver/user-session integrace mohou byt spolehlivejsi v prihlasene user session.
-- Pozdeji lze zvazit service mode, pokud se overi pristup k printer subsystemu.
+- Agent runs silently in the background.
+- Agent starts after the user logs into Windows through desktop runtime autostart.
+- Agent has an icon in the tray.
+- Agent restarts automatically after a crash.
+- Windows Service is not the default for now because printers, tray UI, and driver/user-session integration may be more reliable inside a logged-in user session.
+- Service mode can be considered later if printer subsystem access is verified.
 
-Tray menu ma minimalne obsahovat:
+The tray menu must include at least:
 
 - Open Print Agent
 - Restart
@@ -71,19 +71,19 @@ Tray menu ma minimalne obsahovat:
 
 ## Installer
 
-Installer pro prvni verzi:
+Installer for the first version:
 
-- umozni vybrat instalacni cestu,
-- nainstaluje agenta mimo source checkout,
-- pribali potrebne runtime soubory vcetne `WinSpoolerHelper.exe`,
-- vytvori config/log/runtime slozky mimo repo,
-- nastavi autostart po prihlaseni,
-- spusti agenta po instalaci,
-- prida uninstaller,
-- zachova config pri upgradu,
-- pri prvnim spusteni zobrazi novy API token pro POS napojeni.
+- allows selecting the installation path,
+- installs the agent outside the source checkout,
+- bundles the required runtime files including `WinSpoolerHelper.exe`,
+- creates config/log/runtime folders outside the repository,
+- configures autostart after login,
+- starts the agent after installation,
+- adds an uninstaller,
+- preserves config during upgrades,
+- shows a new API token for POS integration on first launch.
 
-Doporucene umisteni:
+Recommended locations:
 
 ```text
 Install:
@@ -96,41 +96,41 @@ Logs:
   %LOCALAPPDATA%\PrintAgent\logs\
 ```
 
-## Tiskove Role
+## Print Roles
 
-V prvni verzi budou podporovane maximalne tyto role:
+The first version will support at most these roles:
 
-- `receipt` - jedna uctenkova tiskarna,
-- `kitchen` - jedna kuchyn/bar/pripravna tiskarna,
-- `cash_drawer` - tiskarna, pres kterou se posila impulz pokladni zasuvce.
+- `receipt` - one receipt printer,
+- `kitchen` - one kitchen/bar/prep printer,
+- `cash_drawer` - the printer through which the cash drawer pulse is sent.
 
-Pravidla:
+Rules:
 
-- `cash_drawer` ma vlastni vyber tiskarny v Agent UI.
-- `cash_drawer` muze pouzivat stejnou fyzickou tiskarnu jako `receipt`, ale neni na ni locked.
-- Kazda role muze byt disabled/None.
-- Pokud POS chce `receipt + kitchen`, ale agent nema nakonfigurovanou kitchen roli, POS konfiguraci nepovoli ulozit, pokud je agent dostupny a stav lze overit.
-- Pokud je agent offline, POS muze nastaveni ulozit s warningem a overi ho po reconnectu.
+- `cash_drawer` has its own printer selection in Agent UI.
+- `cash_drawer` may use the same physical printer as `receipt`, but it is not locked to it.
+- Each role may be disabled/None.
+- If POS wants `receipt + kitchen`, but the agent has no kitchen role configured, POS will not allow saving the configuration if the agent is available and the status can be verified.
+- If the agent is offline, POS may save the settings with a warning and verify them after reconnect.
 
-Slovo `sticker` se bude postupne opoustet:
+The word `sticker` will be phased out gradually:
 
-- dnesni sticker tisk na napoje se v novem contractu jmenuje `kitchen`,
-- v POS kodu se bude postupne prepisovat terminologie ze sticker na kitchen,
-- soucasne DB pole `print_sticker` se zatim mapuje jako `printKitchen`,
-- pozdeji se DB/UI rozdeli na `print_kitchen` a `print_receipt`.
+- today's drink sticker printing is called `kitchen` in the new contract,
+- POS code will gradually be migrated from sticker terminology to kitchen terminology,
+- the current DB field `print_sticker` is mapped as `printKitchen` for now,
+- later the DB/UI will be split into `print_kitchen` and `print_receipt`.
 
-## POS Chovani
+## POS Behavior
 
-POS Printing Settings budou obsahovat jedno pole pro Print Agent URL a nastaveni chovani tisku.
+POS Printing Settings will contain one field for the Print Agent URL and print behavior settings.
 
-POS nastavuje:
+POS configures:
 
 - Print Agent enabled/disabled,
 - receipt printing enabled/disabled,
 - kitchen printing enabled/disabled,
 - open drawer on cash payment enabled/disabled.
 
-POS pouze zobrazuje:
+POS only displays:
 
 - agent connected/disconnected,
 - agent version,
@@ -138,146 +138,146 @@ POS pouze zobrazuje:
 - receipt printer status,
 - kitchen printer status,
 - cash drawer mapping,
-- warningy typu `Kitchen printer not configured`.
+- warnings such as `Kitchen printer not configured`.
 
-POS nemeni:
+POS does not change:
 
-- vyber konkretni tiskarny,
-- role tiskaren,
-- token v agentovi,
-- remote tunnel konfiguraci agenta.
+- selection of a specific printer,
+- printer roles,
+- token in the agent,
+- agent remote tunnel configuration.
 
-## Status a Chyby
+## Status and Errors
 
-Stavajici systemove diody v POS zustavaji hlavni rychla signalizace. Print dioda ukazuje zakladni stav:
+The existing system indicators in POS remain the main quick signal. The print indicator shows the basic state:
 
-- zelena: agent/tisk dostupny,
-- cervena: agent offline, bad token, chybejici role nebo chyba tiskarny.
+- green: agent/printing available,
+- red: agent offline, bad token, missing role, or printer error.
 
-Detail chyby se ukazuje pres toast a v Printing Settings.
+Error detail is shown through a toast and in Printing Settings.
 
-Pravidla pri chybach:
+Error handling rules:
 
-- Platba/prodej se nikdy nezasekne kvuli tisku.
-- Kdyz Print Agent nefunguje, uctenka se i tak ulozi.
-- Kdyz receipt tisk selze, POS ukaze warning toast.
-- Kdyz kitchen tisk selze, POS ukaze warning toast.
-- Kdyz tiskarna hlasi paper out/offline/error, POS ukaze warning toast a proces pokracuje.
-- Agent offline znamena, ze se netiskne. Neni browser fallback.
-- Uctenku musi jit zpetne dohledat a dovytisknout existujicim reprint flow.
+- Payment/sale never gets stuck because of printing.
+- When Print Agent does not work, the receipt is still saved.
+- When receipt printing fails, POS shows a warning toast.
+- When kitchen printing fails, POS shows a warning toast.
+- When a printer reports paper out/offline/error, POS shows a warning toast and the process continues.
+- Agent offline means nothing prints. There is no browser fallback.
+- The receipt must be possible to find later and print through the existing reprint flow.
 
-Print Agent UI ma ukazovat zivy stav tiskaren:
+Print Agent UI must show live printer status:
 
-- refresh kazdych 10 sekund,
-- refresh pri otevreni POS/Agent UI.
+- refresh every 10 seconds,
+- refresh when POS/Agent UI is opened.
 
-## Testovaci Rezim
+## Test Mode
 
-Pro vyvoj a QA bez native helperu muze Agent podporovat explicitni testovaci backend:
+For development and QA without the native helper, Agent may support an explicit test backend:
 
-- `printerAdapterMode: "windows"` - realny Windows backend,
-- `printerAdapterMode: "simulated"` - simulovany backend bez fyzickeho tisku.
+- `printerAdapterMode: "windows"` - real Windows backend,
+- `printerAdapterMode: "simulated"` - simulated backend without physical printing.
 
-Pravidla:
+Rules:
 
-- default pro produkci je `windows`,
-- `simulated` se zapina rucne v Agent UI,
-- testovaci backend vraci uspesny receipt/kitchen/drawer vysledek bez odeslani na tiskarnu,
-- simulated mod slouzi pro overeni UI, API contractu, token auth, drawer flow a dedupe,
-- skutecny tisk se overuje az s `WinSpoolerHelper.exe`.
+- default for production is `windows`,
+- `simulated` is enabled manually in Agent UI,
+- test backend returns successful receipt/kitchen/drawer results without sending anything to a printer,
+- simulated mode is used to verify UI, API contract, token auth, drawer flow, and dedupe,
+- real printing is verified only with `WinSpoolerHelper.exe`.
 
-Do doplneni `WinSpoolerHelper.exe` muze `windows` backend podporovat basic fallback:
+Until `WinSpoolerHelper.exe` is added, the `windows` backend may support a basic fallback:
 
-- receipt a ESC/POS-like tiskarny se poslou pres Windows RAW spooler,
-- ostatni kitchen tiskarny se mohou poslat pres Windows driver/GDI jako plain text,
-- label tiskarny mohou mit ulozeny presny format media podle role,
-- cash drawer test muze poslat ESC/POS drawer pulse pres RAW spooler,
-- fallback overuje, ze agent vidi a dokaze oslovit Windows tiskarnu,
-- fallback neni finalni thermal/sticker layout,
-- drawer fallback funguje jen pokud je zasuvka fyzicky pripojena k ESC/POS tiskarne nebo kompatibilnimu drawer portu.
+- receipt and ESC/POS-like printers are sent through the Windows RAW spooler,
+- other kitchen printers may be sent through the Windows driver/GDI as plain text,
+- label printers may store the exact media format by role,
+- cash drawer test may send an ESC/POS drawer pulse through the RAW spooler,
+- fallback verifies that the agent can see and address a Windows printer,
+- fallback is not the final thermal/sticker layout,
+- drawer fallback works only if the drawer is physically connected to an ESC/POS printer or a compatible drawer port.
 
-## Kitchen Tisk
+## Kitchen Printing
 
-`kitchen` znamena obecny pripraveny tisk pro bar/kuchyn/pripravnu.
+`kitchen` means general prep printing for a bar/kitchen/prep area.
 
-Soucasny use case:
+Current use case:
 
-- jde o dnesni napojovy sticker,
-- tiskne se za danou polozku/drink,
-- trigger zustava stejny jako dnes,
-- tiskne se pri pridani/uprave polozky podle soucasneho POS flow.
+- it is today's drink sticker,
+- it prints for the given item/drink,
+- the trigger remains the same as today,
+- it prints when an item is added/updated according to the current POS flow.
 
-Budouci use case:
+Future use case:
 
-- POS muze pozdeji tisknout jidla nebo kuchynske tickety,
-- `kitchen` muze zustat obecny nazev,
-- template lze pozdeji rozsirit nebo vybirat.
+- POS may later print food items or kitchen tickets,
+- `kitchen` may remain the general name,
+- the template can later be extended or selectable.
 
-## Deduplikace
+## Deduplication
 
-Cil deduplikace je ochrana proti dvojkliku, retry a duplicitnimu requestu. Neni to fronta k pozdejsimu tisku.
+The goal of deduplication is protection against double-clicks, retries, and duplicate requests. It is not a queue for later printing.
 
-Pravidla:
+Rules:
 
-- Kazdy automaticky print job ma stabilni `jobId`.
-- Stejny `jobId` se stejnym normalizovanym obsahem agent zpracuje jen jednou.
-- Pokud POS posle stejny `jobId` a stejny obsah znovu, agent vrati stav typu `already_processed`.
-- Pokud POS pouzije stejny `jobId` pro jinou operaci nebo payload, agent ji kvuli kompatibilite zpracuje a zaloguje integracni warning.
-- Rucni reprint ma vzdy novy `jobId`, aby se vytiskl znovu.
-- Uprava polozky ma novy `jobId`, protoze jde o novou verzi kitchen tisku.
-- Multi-device concurrent POS neni v prvni verzi podporovany.
-- Prvni verze podporuje jedno aktivni POS zarizeni na jednu provozovnu / jeden Print Agent.
-- Dedupe historie muze byt lokalne drzana pro aktualni business day nebo 24 hodin.
-- Dedupe historie se muze ulozit na disk, ale po restartu nesmi nic sama dotiskavat.
+- Every automatic print job has a stable `jobId`.
+- The agent processes the same `jobId` with the same normalized content only once.
+- If POS sends the same `jobId` and the same content again, the agent returns a status such as `already_processed`.
+- If POS uses the same `jobId` for a different operation or payload, the agent processes it for compatibility and logs an integration warning.
+- Manual reprint always has a new `jobId` so it prints again.
+- Item update has a new `jobId` because it is a new version of kitchen printing.
+- Multi-device concurrent POS is not supported in the first version.
+- The first version supports one active POS device per store/location and one Print Agent.
+- Dedupe history may be kept locally for the current business day or 24 hours.
+- Dedupe history may be persisted to disk, but after restart it must not print anything by itself.
 
-## Token a Pairing
+## Token and Pairing
 
-Token chrani vsechny citlive akce agenta.
+Token protects all sensitive agent actions.
 
-Pravidla:
+Rules:
 
-- Token se vygeneruje pri instalaci nebo prvnim spusteni.
-- Token se ukaze jen jednou.
-- UI jasne rekne, ze token je tajny a nema se sdilet.
-- Ulozeny token v agentovi ma byt hash, ne plaintext.
-- POS token zada rucne.
-- POS token ulozi lokalne pro konkretni browser/zarizeni.
-- Pokud se token ztrati, admin vygeneruje novy token.
-- Po regeneraci prestane POS fungovat, dokud se nezada novy token.
-- `open drawer` pouziva stejny token jako tisk.
+- Token is generated during installation or first launch.
+- Token is shown only once.
+- UI clearly says the token is secret and must not be shared.
+- The token stored in the agent should be a hash, not plaintext.
+- POS token is entered manually.
+- POS stores the token locally for the specific browser/device.
+- If the token is lost, an admin generates a new token.
+- After regeneration, POS stops working until the new token is entered.
+- `open drawer` uses the same token as printing.
 
-Doporucene rozdeleni uloziste:
+Recommended storage split:
 
-- `localStorage`: Print Agent URL a token pro konkretni POS zarizeni.
-- Supabase: necitlive preference typu `printReceipts`, `printKitchen`, `openDrawerOnCash`.
+- `localStorage`: Print Agent URL and token for the specific POS device.
+- Supabase: non-sensitive preferences such as `printReceipts`, `printKitchen`, `openDrawerOnCash`.
 
-## Remote URL a Ngrok
+## Remote URL and Ngrok
 
-Ngrok zustava podporovana remote access varianta, protoze POS muze bezet na tabletu nebo jinem PC a tiskarny mohou byt na serverovem Windows PC.
+Ngrok remains a supported remote access option because POS may run on a tablet or another PC while printers may be connected to a server Windows PC.
 
-Rozhodnuti:
+Decisions:
 
-- Ngrok/remote tunnel muze zustat soucasti podporovaneho setupu.
-- Neni zadny autosync URL pres Supabase.
-- Admin zkopiruje remote URL z Print Agent UI.
-- POS ma jedno pole `Print Agent URL`.
-- POS po vlozeni URL a tokenu udela test connection.
-- POS ulozi URL pouze po uspesnem testu, pokud je agent dostupny.
-- Pokud je agent offline, POS muze ulozit nastaveni s warningem.
-- V POS UI se URL zobrazuje maskovane, ne v plnem zneni.
-- Běžny zamestnanec nema videt celou remote URL ani token.
-- Lokální Admin UI agenta je bez PINu; HTTP API zustava chranene API tokenem.
+- Ngrok/remote tunnel may remain part of the supported setup.
+- There is no automatic URL sync through Supabase.
+- Admin copies the remote URL from Print Agent UI.
+- POS has one `Print Agent URL` field.
+- After the URL and token are entered, POS performs a test connection.
+- POS saves the URL only after a successful test if the agent is available.
+- If the agent is offline, POS may save the settings with a warning.
+- In POS UI, the URL is displayed masked, not in full.
+- A regular employee must not see the full remote URL or token.
+- Local Agent Admin UI has no PIN; the HTTP API remains protected by the API token.
 
-Technicky nazev v kodu by mel byt obecny:
+The technical name in code should be generic:
 
 - `remoteAccessUrl`,
 - `tunnelProvider: "ngrok"`.
 
-POS by nemel byt pevne svazany s ngrokem. Staci, ze zna URL.
+POS should not be tightly coupled to ngrok. It only needs to know the URL.
 
 ## Print Agent API v2
 
-Doporuceny cilovy contract:
+Recommended target contract:
 
 ```text
 GET  /health
@@ -290,7 +290,7 @@ POST /test/kitchen
 POST /test/drawer
 ```
 
-HTTP endpointy vyzaduji token:
+HTTP endpoints require a token:
 
 - `/health`,
 - `/printers`,
@@ -299,9 +299,9 @@ HTTP endpointy vyzaduji token:
 - `/test/receipt`,
 - `/test/kitchen`,
 - `/test/drawer`,
-- legacy endpoints, pokud zustanou zachovane.
+- legacy endpoints, if they remain preserved.
 
-`/health` s validnim tokenem vraci:
+`/health` with a valid token returns:
 
 ```json
 {
@@ -311,7 +311,7 @@ HTTP endpointy vyzaduji token:
 }
 ```
 
-Detailni stav s tokenem:
+Detailed status with token:
 
 ```json
 {
@@ -345,21 +345,21 @@ Detailni stav s tokenem:
 
 ## Templates
 
-Prvni verze nepodporuje vyber template v UI.
+The first version does not support template selection in UI.
 
-Pouzije se:
+It will use:
 
-- `receipt.default` - soucasna receipt sablona, postupne ocistena od brand-specific hardcodu,
-- `kitchen.default` - dnesni napojovy sticker layout, ale v contractu a UI pojmenovany jako kitchen.
+- `receipt.default` - current receipt template, gradually cleaned of brand-specific hardcoding,
+- `kitchen.default` - today's drink sticker layout, but named kitchen in the contract and UI.
 
-Pozdeji:
+Later:
 
-- template selector v Agent UI,
-- vice receipt template,
-- vice kitchen/ticket template,
-- obecnejsi template pro jidla.
+- template selector in Agent UI,
+- multiple receipt templates,
+- multiple kitchen/ticket templates,
+- more general template for food.
 
-Brand-specific veci se maji postupne presouvat z template do payloadu nebo konfigurace:
+Brand-specific items should gradually move from the template into payload or configuration:
 
 - logo,
 - company name,
@@ -367,13 +367,13 @@ Brand-specific veci se maji postupne presouvat z template do payloadu nebo konfi
 - footer texts,
 - QR code,
 - label/kitchen message,
-- viditelnost poli.
+- field visibility.
 
-## Public Release a Monorepo
+## Public Release and Monorepo
 
-Slouceni repozitaru ma prijit az po stabilizaci Print Agent v2 contractu.
+Repository merge should happen only after the Print Agent v2 contract is stabilized.
 
-Doporuceny cilovy monorepo tvar:
+Recommended target monorepo shape:
 
 ```text
 pos/
@@ -395,51 +395,51 @@ pos/
   vercel.json
 ```
 
-Slouceni ma smysl pro:
+Merge makes sense for:
 
-- spolecny print protocol,
-- jednotnou dokumentaci,
-- GitHub Releases s instalatorem agenta,
-- kompatibilitu POS a agenta,
-- verejny release jako jeden produkt.
+- shared print protocol,
+- unified documentation,
+- GitHub Releases with the agent installer,
+- POS and agent compatibility,
+- public release as one product.
 
-Slouceni nema znamenat spolecnou instalaci. POS a Print Agent zustanou oddelene runtime aplikace.
+Merge must not mean shared installation. POS and Print Agent remain separate runtime applications.
 
-## Implementacni Poradi
+## Implementation Order
 
-1. Ulozit tento QA/spec dokument do feature vetve.
-2. Pridat runtime config mimo repo.
-3. Pridat model tiskovych roli: `receipt`, `kitchen`, `cash_drawer`.
-4. Pridat admin UI pro vyber tiskaren a zobrazeni stavu.
-5. Pridat token auth a jednorazove zobrazeni tokenu.
-6. Pridat/migrovat endpointy na `/health`, `/printers`, `/config`, `/print-jobs`.
-7. Pridat dedupe pres `jobId`.
-8. Zachovat legacy endpointy docasne, pokud to pomuze postupnemu prepojeni POS.
-9. Upravit POS `printAgent.ts` na novy contract a terminologii `kitchen`.
-10. Upravit POS Printing Settings.
-11. Pripravit Electron shell, tray integraci a lokalni admin UI.
-12. Pripravit standalone build a NSIS installer.
-13. Az potom resit monorepo merge.
+1. Save this QA/spec document into a feature branch.
+2. Add runtime config outside the repository.
+3. Add print role model: `receipt`, `kitchen`, `cash_drawer`.
+4. Add admin UI for printer selection and status display.
+5. Add token auth and one-time token display.
+6. Add/migrate endpoints to `/health`, `/printers`, `/config`, `/print-jobs`.
+7. Add dedupe through `jobId`.
+8. Preserve legacy endpoints temporarily if it helps gradual POS integration.
+9. Update POS `printAgent.ts` to the new contract and `kitchen` terminology.
+10. Update POS Printing Settings.
+11. Prepare Electron shell, tray integration, and local admin UI.
+12. Prepare standalone build and NSIS installer.
+13. Only then handle the monorepo merge.
 
-## Aktualni Zachovane Chovani
+## Current Preserved Behavior
 
-Pri implementaci v2 zachovat:
+During v2 implementation, preserve:
 
-- receipt se uklada v POS pred tiskem,
-- tisk po platbe bezi asynchronne,
-- chyba tisku nevraci platbu ani neblokuje prodej,
-- receipt reprint v POS zustava,
-- kitchen/sticker reprint v POS zustava,
-- cash drawer se otevira pri cash payment, pokud je to v POS povolene,
-- manual open drawer tlacitko zustava.
+- receipt is saved in POS before printing,
+- printing after payment runs asynchronously,
+- print error does not reverse payment or block sale,
+- receipt reprint in POS remains,
+- kitchen/sticker reprint in POS remains,
+- cash drawer opens on cash payment if enabled in POS,
+- manual open drawer button remains.
 
-## Otevrene Body Pro Pozdeji
+## Open Items for Later
 
-- skutecny Windows Service mode,
+- real Windows Service mode,
 - macOS/CUPS adapter,
-- AirPrint/WiFi/Bluetooth tisk,
+- AirPrint/WiFi/Bluetooth printing,
 - template selector,
-- vice tiskaren pro jednu roli,
-- plna multi-device podpora,
-- cloud relay misto verejneho tunnelu,
-- code signing installeru.
+- multiple printers for one role,
+- full multi-device support,
+- cloud relay instead of a public tunnel,
+- code signing for the installer.
